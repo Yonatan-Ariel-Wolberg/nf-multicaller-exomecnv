@@ -2,30 +2,30 @@
 
 # Tools
 
-CANOES:
+CANOES: https://github.com/ShenLab/CANOES
 
-CLAMMS:
+CLAMMS: https://github.com/rgcgithub/clamms
 
-XHMM:
+XHMM: https://github.com/RRafiee/XHMM
 
-InDelible:
+InDelible: https://github.com/HurlesGroupSanger/indelible
 
 ICAv2: https://help.ica.illumina.com/command-line-interface/cli-indexcommands
 
 DRAGEN Germline Enrichment: https://www.illumina.com/products/by-type/informatics-products/basespace-sequence-hub/apps/dragen-enrichment.html
 
-GATK-gCNV:
+GATK-gCNV: https://github.com/broadinstitute/gatk
 
-CNVkit:
+CNVkit: https://github.com/etal/cnvkit
 
-Truvari:
+Truvari: https://github.com/ACEnglish/truvari
 
-SURVIVOR:
+SURVIVOR: https://github.com/fritzsedlazeck/SURVIVOR
 
 
 # nf-multicaller-exomecnv
 
-A Nextflow pipeline for comprehensive genomic analysis combining multiple variant callers with exome and copy number variation (CNV) detection.
+A Nextflow pipeline for comprehensive genomic analysis combining multiple variant callers with exome and copy number variation (CNV) detection. Based on a workflow by Dr Phelelani T Mpangase: https://github.com/phelelani/nf-exomecnv.
 
 ## Overview
 
