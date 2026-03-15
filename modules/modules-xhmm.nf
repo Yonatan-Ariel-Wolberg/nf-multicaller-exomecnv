@@ -1,1 +1,322 @@
-// XHMM modules
+#!/usr/bin/env nextflow
+nextflow.enable.dsl=2
+
+// =====================================================================================
+// XHMM MODULE
+// =====================================================================================
+
+// =====================================================================================
+// GLOBAL FILE INSTANTIATION
+// =====================================================================================
+ref       = file(params.ref, type: 'file')
+probes    = file(params.probes, type: 'file')
+xhmm_conf = file(params.xhmm_conf, type: 'file')
+outdir    = file(params.outdir, type: 'dir')
+
+// =====================================================================================
+// SPLIT BAM FILES TO GROUPS
+// =====================================================================================
+process groupBAMs {
+    tag { 'group_bams' }
+
+    input:
+    path(bams)
+
+    output:
+    path("bam_group_*"), emit: bam_groups
+    
+    script:
+    """
+    sort bam_list_unsorted.txt > bam_list_sorted.txt
+    split -l 5 bam_list_sorted.txt --numeric-suffixes=000 --suffix-length=3 --additional-suffix=.list bam_group_
+    """
+}
+
+// RUN GATK FOR DEPTH OF COVERAGE (FOR SAMPLES IN EACH GROUP):
+process gatkDOC {
+    tag { "${group}" }
+    label 'gatk'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    input:
+    tuple val(group), path(list)
+    
+    output:
+    tuple val(group), path("${group}.DATA.sample_interval_summary"), emit: bam_group_doc
+
+    script:
+    mem = task.memory.toGiga() - 4   // Reserve memory for GATK processing
+    
+    """
+    gatk --java-options "-XX:+UseSerialGC -Xss456k -Xms2g -Xmx${mem}g -Djava.io.tmpdir=\$PWD" \
+        DepthOfCoverage \
+        -I ${list} \
+        -L ${probes} \
+        -R ${ref} \
+        --max-depth-per-sample 5000 \
+        --verbosity INFO \
+        --omit-depth-output-at-each-base true \
+        --omit-locus-table true \
+        --min-base-quality 0 \
+        --read-filter MappingQualityReadFilter \
+        --minimum-mapping-quality 20 \
+        --start 1 --stop 5000 --nBins 200 \
+        --include-ref-n-sites true \
+        --count-type COUNT_READS \
+        --output ${group}.DATA
+    """
+}
+
+// COMBINES GATK DEPTH-OF-COVERAGE OUTPUTS FOR MULTIPLE SAMPLES (AT SAME LOCI):
+process combineDOC {
+    tag { 'combine_doc' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    input:
+    path(list)
+    
+    output:
+    path("DATA.RD.txt"), emit: combined_doc
+    
+    script:
+    """
+    for i in *.sample_interval_summary; do sed 's/,/	/g' \$i > \${i%.sample_interval_summary}.fixed_sample_interval_summary ; done
+    ls *.fixed_sample_interval_summary > the_list
+    xhmm --mergeGATKdepths -o DATA.RD.txt --GATKdepthsList the_list
+    """
+}
+
+// OPTIONALLY, RUN GATK TO CALCULATE THE PER-TARGET GC CONTENT AND CREATE A LIST OF EXTREME GC CONTENT TARGETS:
+process calcGC_XHMM {
+    tag { 'calc_gc' }
+    label 'gatk'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    output:
+    path("DATA.locus_GC.txt"), emit: gc_targets
+    path("extreme_gc_targets.txt"), emit: extreme_gc_targets
+    
+    script:
+    """
+    gatk AnnotateIntervals \
+        -R ${ref} \
+        -L ${probes} \
+        --interval-merging-rule OVERLAPPING_ONLY \
+        -O gc.tmp
+
+    grep "^chr" gc.tmp | awk '{ print \$1":"\$2"-"\$3"\t"\$4 }' > DATA.locus_GC.txt
+    cat DATA.locus_GC.txt | awk '{ if (\$2 < 0.1 || \$2 > 0.9) print \$1 }' > extreme_gc_targets.txt
+    """
+}
+
+// FILTERS SAMPLES AND TARGETS AND THEN MEAN-CENTERS THE TARGETS:
+process filterSamples {
+    tag { 'filter_samples' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true    
+
+    input:
+    path(combined_doc)
+    path(extreme_gc_targets)
+    
+    output:
+    path("DATA.filtered_centered.RD.txt"), emit: filtered_centered
+    path("DATA.filtered_centered.RD.txt.filtered_targets.txt"), emit: excluded_filtered_targets
+    path("DATA.filtered_centered.RD.txt.filtered_samples.txt"), emit: excluded_filtered_samples
+    
+    script:
+    """
+    xhmm --matrix -r DATA.RD.txt --centerData --centerType target \
+        -o DATA.filtered_centered.RD.txt \
+        --outputExcludedTargets DATA.filtered_centered.RD.txt.filtered_targets.txt \
+        --outputExcludedSamples DATA.filtered_centered.RD.txt.filtered_samples.txt \
+        --excludeTargets extreme_gc_targets.txt \
+        --minTargetSize 10 --maxTargetSize 10000 \
+        --minMeanTargetRD 10 --maxMeanTargetRD 500 \
+        --minMeanSampleRD 25 --maxMeanSampleRD 200 \
+        --maxSdSampleRD 150
+   """
+}
+
+// RUNS PCA ON MEAN-CENTERED DATA:
+process runPCA {
+    tag { 'run_pca' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+
+    input:
+    path(filtered_centered)
+    
+    output:
+    tuple val("pca_data"), path("DATA.RD_PCA*"), emit: pca_data
+
+    script:
+    """
+    xhmm --PCA -r DATA.filtered_centered.RD.txt --PCAfiles DATA.RD_PCA
+    """
+}
+
+// NORMALIZES MEAN-CENTERED DATA USING PCA INFORMATION:
+process normalisePCA {
+    tag { 'norm_pca' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+
+    input:
+    path(filtered_centered)
+    tuple val(pca), path(pca_data)
+    
+    output:
+    path("DATA.PCA_normalized.txt"), emit: data_pca_norm
+
+    script:
+    """
+    xhmm --normalize -r DATA.filtered_centered.RD.txt \
+        --PCAfiles DATA.RD_PCA \
+        --normalizeOutput DATA.PCA_normalized.txt \
+        --PCnormalizeMethod PVE_mean --PVE_mean_factor 0.7
+    """
+}
+
+// FILTERS AND Z-SCORE CENTERS (BY SAMPLE) THE PCA-NORMALIZED DATA:
+process filterZScore {
+    tag { 'filter_zscore' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    input:
+    path(data_pca_norm)
+    
+    output:
+    path("DATA.PCA_normalized.filtered.sample_zscores.RD.txt"), emit: pca_norm_zscore
+    path("DATA.PCA_normalized.filtered.sample_zscores.RD.txt.filtered_targets.txt"), emit: excluded_zscore_targets
+    path("DATA.PCA_normalized.filtered.sample_zscores.RD.txt.filtered_samples.txt"), emit: excluded_zscore_samples
+    
+    script:
+    """
+    xhmm --matrix -r DATA.PCA_normalized.txt \
+        --centerData --centerType sample --zScoreData \
+        -o DATA.PCA_normalized.filtered.sample_zscores.RD.txt \
+        --outputExcludedTargets DATA.PCA_normalized.filtered.sample_zscores.RD.txt.filtered_targets.txt \
+        --outputExcludedSamples DATA.PCA_normalized.filtered.sample_zscores.RD.txt.filtered_samples.txt \
+        --maxSdTargetRD 30
+    """
+}
+
+// FILTERS ORIGINAL READ-DEPTH DATA TO BE THE SAME AS FILTERED, NORMALIZED DATA:
+process filterRD {
+    tag { 'filter_rd' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+
+    input:
+    path(combined_doc)
+    path(excluded_filtered_targets)
+    path(excluded_zscore_targets)
+    path(excluded_filtered_samples)
+    path(excluded_zscore_samples)
+    
+    output:
+    path("DATA.same_filtered.RD.txt"), emit: orig_filtered
+
+    script:
+    """
+    xhmm --matrix -r DATA.RD.txt \
+        --excludeTargets DATA.filtered_centered.RD.txt.filtered_targets.txt \
+        --excludeTargets DATA.PCA_normalized.filtered.sample_zscores.RD.txt.filtered_targets.txt \
+        --excludeSamples DATA.filtered_centered.RD.txt.filtered_samples.txt \
+        --excludeSamples DATA.PCA_normalized.filtered.sample_zscores.RD.txt.filtered_samples.txt \
+        -o DATA.same_filtered.RD.txt
+    """
+}
+
+// DISCOVERS CNVS IN NORMALIZED DATA:
+process discoverCNVs {
+    tag { 'discover_cnvs' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+
+    input:
+    path(orig_filtered)
+    path(pca_norm_zscore)
+    
+    output:
+    path("*"), emit: cnvs
+    
+    script:
+    """
+    xhmm --discover -p ${xhmm_conf} \
+        -r DATA.PCA_normalized.filtered.sample_zscores.RD.txt \
+        -R DATA.same_filtered.RD.txt \
+        -c DATA.xcnv -a DATA.aux_xcnv -s DATA
+    """
+}
+
+// GENOTYPES DISCOVERED CNVS IN ALL SAMPLES:
+process genotypeCNVs {
+    tag { 'genotype_cnvs' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    input:
+    path(orig_filtered)
+    path(pca_norm_zscore)
+    path(cnvs)
+    
+    output:
+    path("*"), emit: genotypes
+    
+    script:
+    """
+    xhmm --genotype -p ${xhmm_conf} \
+        -r DATA.PCA_normalized.filtered.sample_zscores.RD.txt \
+        -R DATA.same_filtered.RD.txt \
+        -g DATA.xcnv -F ${ref} \
+        -v DATA.vcf
+    """
+}
+
+// SPLITS COMBINED VCF INTO INDIVIDUAL SAMPLE VCFs
+process splitVCF {
+    tag { 'split_vcf' }
+    label 'vcf'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    input:
+    path(vcf_file)
+    
+    output:
+    path("*_DATA.vcf"), emit: individual_vcfs
+    
+    script:
+    """
+    # Use bcftools to split the VCF file by sample while excluding placeholders
+    for sample in \$(bcftools query -l ${vcf_file}); do
+        bcftools view -s \${sample} ${vcf_file} | \
+        # Filter out placeholders and keep only variants called for that sample
+        bcftools filter -e 'FORMAT/EQ="." || FORMAT/SQ="." || FORMAT/NDQ="."' -o \${sample}_DATA.vcf
+    done
+    """
+}
+
+// FILTERS CNV OUTPUTS USING BCFTOOLS BASED ON EQ, SQ, AND NDQ VALUES
+process filterXHMMCNVs {
+    tag { 'filter_cnvs' }
+    label 'xhmm'
+    publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
+    
+    input:
+    path(individual_vcfs)
+    
+    output:
+    path("DATA_filtered.vcf"), emit: filtered_cnvs
+    
+    script:
+    """
+    # Loop over the individual VCF files and apply bcftools filter
+    for vcf in individual_vcfs; do
+        bcftools filter -e 'FORMAT/EQ<=60 || FORMAT/SQ<=60 || FORMAT/NDQ<=60' \${vcf} -o \${vcf%.vcf}_filtered.vcf
+    done
+    """
+}
