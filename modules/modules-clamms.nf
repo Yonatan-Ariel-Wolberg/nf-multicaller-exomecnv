@@ -275,6 +275,61 @@ process filterCLAMMSCNVs {
     """
 }
 
+
+// Process to convert CLAMMS BED to VCF using the Python script
+process convertClammsToVCF {
+    tag "convert"
+    
+    input:
+    path input_file
+    path sample_file
+    path fai_file
+    path log_file
+
+    output:
+    path("${output_dir}/combined_CLAMMS_output.vcf"), emit: vcf_file
+
+    script:
+    """
+    python3 clamms_bed_to_vcf.py --input_file ${input_file} --sample_file ${sample_file} --output_dir ${output_dir} --fai_file ${fai_file} --log_file ${log_file}
+    """
+}
+
+// Process to bgzip, sort, and index the produced VCF file
+process run_BCFtools {
+    tag "bcftools"
+    
+    input:
+    path vcf_file
+    path output_dir
+
+    output:
+    path("${output_dir}/*.sorted.gz"), emit: sorted_vcf
+
+    script:
+    """
+    # bgzip
+    bgzip -c ${vcf_file} > ${vcf_file}.gz
+    
+    # bcftools sort
+    bcftools sort ${vcf_file}.gz -o ${vcf_file}.sorted.gz
+    
+    # Use tabix to index the sorted VCF file
+    tabix -p vcf ${vcf_file}.sorted.gz
+    
+    # Optionally remove the intermediate files
+    rm ${vcf_file}.gz
+    rm ${vcf_file}
+    """
+}
+
+
+
+
+
+
+
+
 // Process to convert CNV call results to VCF format
 process convertClammsToVcf {
     tag "BED_TO_VCF"
