@@ -1,22 +1,26 @@
 # nf-multicaller-exomecnv
 
-CANOES
+# Tools
 
-CLAMMS
+CANOES:
 
-XHMM
+CLAMMS:
 
-InDelible
+XHMM:
 
-ICAv2-DRAGEN
+InDelible:
 
-GATK-gCNV
+ICAv2:
 
-CNVkit
+DRAGEN:
 
-Truvari
+GATK-gCNV:
 
-SURVIVOR
+CNVkit:
+
+Truvari:
+
+SURVIVOR:
 
 
 # nf-multicaller-exomecnv
