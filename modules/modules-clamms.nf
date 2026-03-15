@@ -292,6 +292,7 @@ process convertClammsToVCF {
     script:
     """
     python3 clamms_bed_to_vcf.py --input_file ${input_file} --sample_file ${sample_file} --output_dir ${output_dir} --fai_file ${fai_file} --log_file ${log_file}
+    echo "Conversion from BED to VCF completed"
     """
 }
 
@@ -320,40 +321,5 @@ process run_BCFtools {
     # Optionally remove the intermediate files
     rm ${vcf_file}.gz
     rm ${vcf_file}
-    """
-}
-
-
-
-
-
-
-
-
-// Process to convert CNV call results to VCF format
-process convertClammsToVcf {
-    tag "BED_TO_VCF"
-    container 'docker://quay.io/biocontainers/python:3.14'
-    publishDir "${outdir}/out_CLAMMS/vcfs", mode: 'copy', overwrite: true
-
-    input:
-    path(filtered_bed)
-    path(sample_list)
-    path(fai)
-
-    output:
-    path("*_CLAMMS_output.vcf"), emit: vcfs
-
-    script:
-    """
-    #!/bin/bash
-    set -euo pipefail
-    echo "Converting CLAMMS output to VCF format..."
-    clamms_bed_to_vcf.py \\
-        --input_file ${filtered_bed} \\
-        --sample_file ${sample_list} \\
-        --output_dir . \\
-        --fai_file ${fai}
-    echo "Conversion to VCF completed."
     """
 }
