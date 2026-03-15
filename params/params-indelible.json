@@ -1,1 +1,8 @@
-{}
+{
+    "ref": "/path/to/reference.fasta",
+    "priors": "/path/to/priors.txt",
+    "indelible_conf": "/path/to/indelible_config.json",
+    "outdir": "./results",
+    "temp_dir": "/path/to/temp",
+    "annotation": "/path/to/annotations.bed"
+}
