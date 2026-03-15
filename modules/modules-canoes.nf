@@ -128,7 +128,7 @@ process filterCANOESCNVs {
 // Process to convert the filtered CANOES output to VCF format
 process convertCanoesToVcf {
     tag { "CSV_TO_VCF" }
-    container 'docker://python:3.9-slim'
+    container 'docker://quay.io/biocontainers/python:3.14'
     publishDir "${outdir}/out_CANOES/vcfs", mode: 'copy', overwrite: true
 
     input:
