@@ -12,7 +12,7 @@ InDelible:
 
 ICAv2:
 
-DRAGEN:
+DRAGEN Germline Enrichment: https://www.illumina.com/products/by-type/informatics-products/basespace-sequence-hub/apps/dragen-enrichment.html
 
 GATK-gCNV:
 
