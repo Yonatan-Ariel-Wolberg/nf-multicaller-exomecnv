@@ -16,13 +16,13 @@
     "targetBedFileId":              "/path/to/ica/target-bed-file-id",
 
     "localDownloadPath":            "/path/to/local/download/directory",
-    "cramFilePairsUploadPath":      "/path/to/cram/files/**/*",
+    "cramFilePairsUploadPath":      "/path/to/cram/or/bam/files/**/*",
     "icaUploadPath":                "/path/to/ica/upload/directory/",
 
     "maxUploadForks":               4,
-    "uploadRetries":                3,
+    "uploadRetries":                5,
     "fileStatusCheckInterval":      20,
-    "fileStatusCheckLimit":         100,
+    "fileStatusCheckLimit":         200,
     "analysisStatusCheckInterval":  300,
-    "analysisStatusCheckLimit":     288
+    "analysisStatusCheckLimit":     576
 }

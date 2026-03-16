@@ -13,7 +13,7 @@ process UPLOAD_CRAM_FILES {
     label 'icav2-dragen'
     maxForks params.maxUploadForks
     cpus 1
-    time '4h'
+    time '6h'
 
     errorStrategy { task.exitStatus == 100 ? 'terminate' : 'retry' }
     maxRetries params.uploadRetries
@@ -29,16 +29,19 @@ process UPLOAD_CRAM_FILES {
     def uploadPath = params.icaUploadPath
     def cramCode = params.cramAnalysisDataCode
     def craiCode = params.cramIndexAnalysisDataCode
+    // Support both CRAM/CRAI and BAM/BAI pairs; pair[0] is the primary file, pair[1] the index
     def (cram_file, crai_file) = cramPair
+    // Exponential backoff: 15s * 2^(attempt-1) capped at 300s
+    def backoffSecs = Math.min(15 * (int)Math.pow(2, task.attempt - 1), 300)
     """
     #!/bin/bash
     set -euo pipefail
 
     # FORCE CACHE INVALIDATION: Ensure we re-check ICA even if -resume is used
-    echo "Verifying upload status for ${sampleId} (v6)..."
+    echo "Verifying upload status for ${sampleId} (attempt ${task.attempt})..."
 
-    # --- JITTER ---
-    sleep \$((RANDOM % 15))
+    # --- JITTER: stagger parallel uploads to avoid thundering-herd on the API ---
+    sleep \$((RANDOM % 30))
 
     time_stamp=\$(date +"%Y-%m-%d %H:%M:%S")
     touch data_upload.txt
@@ -83,10 +86,10 @@ process UPLOAD_CRAM_FILES {
             fi
         fi
         
-        # 2. Upload
+        # 2. Upload with extended timeout for large files
         echo "UPLOAD: Uploading \$fname..." >&2
         local upload_raw
-        upload_raw=\$(timeout 3600 icav2 projectdata upload "\$fpath" "\$folder" --project-id "\$pid" -o json 2>&1 || true)
+        upload_raw=\$(timeout 7200 icav2 projectdata upload "\$fpath" "\$folder" --project-id "\$pid" -o json 2>&1 || true)
 
         if echo "\$upload_raw" | grep -qE "Unauthorized|ICA_SEC_002"; then
              echo "CRITICAL ERROR: ICA Authentication Failed during UPLOAD. Check API Key." >&2
@@ -95,7 +98,15 @@ process UPLOAD_CRAM_FILES {
         fi
         
         if echo "\$upload_raw" | grep -qE "429|Too Many Requests"; then
-             echo "WARNING: Rate limit hit for \$fname. Failing task to trigger retry." >&2
+             echo "WARNING: Rate limit hit for \$fname. Backing off ${backoffSecs}s before retry." >&2
+             sleep ${backoffSecs}
+             return 1
+        fi
+
+        # Handle transient network/connection errors with backoff
+        if echo "\$upload_raw" | grep -qE "connection reset|timeout|Connection refused|Network unreachable|curl: \\("; then
+             echo "WARNING: Network error uploading \$fname. Backing off ${backoffSecs}s before retry." >&2
+             sleep ${backoffSecs}
              return 1
         fi
 
@@ -179,7 +190,7 @@ process CHECK_FILE_STATUS {
     label 'icav2-dragen'
     cpus 1
     errorStrategy 'retry'
-    maxRetries 2
+    maxRetries 5
     
     input:
     path(dataFile)
@@ -196,22 +207,22 @@ process CHECK_FILE_STATUS {
     #!/bin/bash
     set -euo pipefail
 
-    echo "DEBUG: Running hardened file status check (v6 - fixed ID parsing)..."
+    echo "DEBUG: Running hardened file status check (large-scale, attempt ${task.attempt})..."
     
     cat ${dataFile} > data_checked.txt
 
     cram_count=\$(grep -c '^${cramCode}:' ${dataFile} || true)
     crai_count=\$(grep -c '^${craiCode}:' ${dataFile} || true)
     
-    echo "Found \$cram_count CRAM files and \$crai_count CRAI files to check"
+    echo "Found \$cram_count CRAM/BAM files and \$crai_count CRAI/BAI files to check"
 
     if [ \$cram_count -eq 0 ]; then
-        echo "Error: No CRAM files found in input file." >&2
+        echo "Error: No primary files (CRAM/BAM) found in input file." >&2
         exit 1
     fi
 
     if [ \$crai_count -eq 0 ]; then
-        echo "Error: No CRAI files found in input file." >&2
+        echo "Error: No index files (CRAI/BAI) found in input file." >&2
         exit 1
     fi
 
@@ -219,6 +230,8 @@ process CHECK_FILE_STATUS {
     mapfile -t crai_ids < <(grep '^${craiCode}:' ${dataFile} | cut -f2- -d: | tr -d '\r')
     
     check_count=0
+    cram_auth_failures=0
+    crai_auth_failures=0
     
     while true; do
         ((check_count+=1))
@@ -227,7 +240,7 @@ process CHECK_FILE_STATUS {
         
         all_available=true
         
-        # Check CRAMs
+        # Check CRAMs/BAMs
         for i in \${!cram_ids[@]}; do
             cram_id=\${cram_ids[\$i]}
             cram_id=\$(echo "\$cram_id" | tr -d '[:space:]')
@@ -236,13 +249,19 @@ process CHECK_FILE_STATUS {
             cram_status_raw=\$(icav2 projectdata get \${cram_id} -o json 2>&1 || true)
             
             if echo "\$cram_status_raw" | grep -qE "Unauthorized|ICA_SEC_002"; then
-                 echo "WARNING: Auth/Network glitch checking CRAM status. Retrying in ${interval}s..."
-                 all_available=false
-                 continue
+                ((cram_auth_failures+=1))
+                # Exponential backoff capped at 600s
+                raw_backoff=\$(( ${interval} * (1 << (cram_auth_failures - 1)) ))
+                backoff=\$(( raw_backoff > 600 ? 600 : raw_backoff ))
+                echo "WARNING: Auth/Network glitch checking primary file status (failure #\${cram_auth_failures}). Waiting \${backoff}s..." >&2
+                sleep \$backoff
+                all_available=false
+                continue
             fi
+            cram_auth_failures=0
             
             if echo "\$cram_status_raw" | grep -qE "NotFound|not found|404"; then
-                 echo "CRITICAL ERROR: CRAM ID \${cram_id} not found in ICA. Please re-run pipeline to re-upload."
+                 echo "CRITICAL ERROR: File ID \${cram_id} not found in ICA. Please re-run pipeline to re-upload."
                  exit 1
             fi
             
@@ -251,11 +270,11 @@ process CHECK_FILE_STATUS {
                 all_available=false
             fi
             
-            # Mini sleep to prevent bursting API
-            sleep 0.5 
+            # Mini sleep to prevent bursting API; scale down for large batches
+            sleep 0.2
         done
         
-        # Check CRAIs
+        # Check CRAIs/BAIs
         for i in \${!crai_ids[@]}; do
             crai_id=\${crai_ids[\$i]}
             crai_id=\$(echo "\$crai_id" | tr -d '[:space:]')
@@ -264,13 +283,19 @@ process CHECK_FILE_STATUS {
             crai_status_raw=\$(icav2 projectdata get \${crai_id} -o json 2>&1 || true)
             
             if echo "\$crai_status_raw" | grep -qE "Unauthorized|ICA_SEC_002"; then
-                 echo "WARNING: Auth/Network glitch checking CRAI status. Retrying in ${interval}s..."
-                 all_available=false
-                 continue
+                ((crai_auth_failures+=1))
+                # Exponential backoff capped at 600s
+                raw_backoff=\$(( ${interval} * (1 << (crai_auth_failures - 1)) ))
+                backoff=\$(( raw_backoff > 600 ? 600 : raw_backoff ))
+                echo "WARNING: Auth/Network glitch checking index file status (failure #\${crai_auth_failures}). Waiting \${backoff}s..." >&2
+                sleep \$backoff
+                all_available=false
+                continue
             fi
+            crai_auth_failures=0
             
             if echo "\$crai_status_raw" | grep -qE "NotFound|not found|404"; then
-                 echo "CRITICAL ERROR: CRAI ID \${crai_id} not found in ICA. Please re-run pipeline to re-upload."
+                 echo "CRITICAL ERROR: Index ID \${crai_id} not found in ICA. Please re-run pipeline to re-upload."
                  exit 1
             fi
             
@@ -280,7 +305,7 @@ process CHECK_FILE_STATUS {
             fi
             
             # Mini sleep to prevent bursting API
-            sleep 0.5
+            sleep 0.2
         done
         
         if [ "\$all_available" = true ]; then
@@ -396,6 +421,8 @@ process CHECK_ANALYSIS_STATUS {
     tag "Monitor Analysis"
     label 'icav2-dragen'
     cpus 1
+    errorStrategy 'retry'
+    maxRetries 3
 
     input:
     path(dataFile)
@@ -414,14 +441,33 @@ process CHECK_ANALYSIS_STATUS {
 
     analysis_id=\$(grep '^analysisId:' ${dataFile} | cut -f2- -d: | tr -d '[:space:]')
     check_count=0
+    api_failures=0
 
     echo "Monitoring analysis \${analysis_id}..."
 
     while true; do
         ((check_count+=1))
 
-        status_json=\$(icav2 projectanalyses get \${analysis_id} -o json)
-        status=\$(echo \${status_json} | jq -r ".status" | tr -d '[:space:]')
+        status_json=\$(icav2 projectanalyses get \${analysis_id} -o json 2>&1 || true)
+
+        # Handle auth / connection failures with exponential backoff
+        if echo "\$status_json" | grep -qE "Unauthorized|ICA_SEC_002|connection reset|timeout|curl: \\("; then
+            ((api_failures+=1))
+            backoff=\$((${interval} * api_failures))
+            echo "WARNING: API/network glitch on status check (failure #\${api_failures}). Waiting \${backoff}s..." >&2
+            sleep \$backoff
+            continue
+        fi
+
+        api_failures=0   # reset on successful API call
+
+        status=\$(echo "\$status_json" | sed -n '/^{/,\$p' | jq -r ".status // empty" 2>/dev/null | tr -d '[:space:]')
+
+        if [ -z "\$status" ]; then
+            echo "WARNING: Could not parse status from API response. Retrying in ${interval}s..." >&2
+            sleep ${interval}
+            continue
+        fi
 
         echo "[\$(date)]: Status is \${status}"
 
@@ -507,21 +553,32 @@ process DELETE_DATA {
     """
     #!/bin/bash
 
-    delete_flag=\$(grep '^deleteData:' ${dataFile} | cut -f2- -d:)
+    delete_flag=\$(grep '^deleteData:' ${dataFile} | cut -f2- -d: | tr -d '[:space:]')
 
     if [ "\$delete_flag" == "true" ]; then
-        cram_id=\$(grep '^${cramCode}:' ${dataFile} | cut -f2- -d:)
-        crai_id=\$(grep '^${craiCode}:' ${dataFile} | cut -f2- -d:)
-        folder_id=\$(grep '^outputFolderId:' ${dataFile} | cut -f2- -d:)
+        # Delete ALL uploaded primary files (CRAM or BAM) for every sample
+        while IFS= read -r line; do
+            file_id=\$(echo "\$line" | cut -d: -f2 | tr -d '[:space:]')
+            if [ -n "\$file_id" ]; then
+                echo "Deleting primary file \${file_id}..."
+                icav2 projectdata delete "\${file_id}" || true
+            fi
+        done < <(grep "^${cramCode}:" "${dataFile}")
 
-        echo "Deleting temporary CRAM file \${cram_id}..."
-        icav2 projectdata delete \${cram_id} || true
+        # Delete ALL uploaded index files (CRAI or BAI) for every sample
+        while IFS= read -r line; do
+            idx_id=\$(echo "\$line" | cut -d: -f2 | tr -d '[:space:]')
+            if [ -n "\$idx_id" ]; then
+                echo "Deleting index file \${idx_id}..."
+                icav2 projectdata delete "\${idx_id}" || true
+            fi
+        done < <(grep "^${craiCode}:" "${dataFile}")
 
-        echo "Deleting temporary CRAI file \${crai_id}..."
-        icav2 projectdata delete \${crai_id} || true
-
-        echo "Deleting analysis output folder \${folder_id}..."
-        icav2 projectdata delete \${folder_id} || true
+        folder_id=\$(grep '^outputFolderId:' ${dataFile} | cut -f2- -d: | tr -d '[:space:]')
+        if [ -n "\${folder_id}" ]; then
+            echo "Deleting analysis output folder \${folder_id}..."
+            icav2 projectdata delete "\${folder_id}" || true
+        fi
 
         echo "Cleanup complete."
     else

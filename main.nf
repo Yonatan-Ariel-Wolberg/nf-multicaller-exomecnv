@@ -196,7 +196,11 @@ workflow {
             break
 
         case['dragen']:
-            Channel.fromFilePairs("${params.cramFilePairsUploadPath}", checkIfExists: true) { file -> file.name.replaceAll(/.cram|.crai|.cram.crai$/, '') }
+            // Support both CRAM/CRAI and BAM/BAI file pairs
+            Channel.fromFilePairs(
+                    ["${params.cramFilePairsUploadPath}"],
+                    checkIfExists: true
+                ) { file -> file.name.replaceAll(/\.(cram\.crai|bam\.bai|cram|crai|bam|bai)$/, '') }
                 .set { ch_cramPairs }
             RUN_DRAGEN(ch_cramPairs)
             break
