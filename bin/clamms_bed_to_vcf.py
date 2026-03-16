@@ -171,21 +171,17 @@ def create_vcf_contig_lines(fai_file):
     return contig_lines
 
 
-def write_vcf_header(vcf_file, sample_file, fai_file, is_combined=False, individual_sample=None):
+def write_vcf_header(vcf_file, fai_file, individual_sample):
     """
     Write the VCF header to the file.
 
     Parameters:
     - vcf_file: VCF file to write the header to.
-    - sample_file: List of sample IDs file.
     - fai_file: Reference genome FASTA index file.
-    - is_combined: Flag for combined VCF output.
-    - individual_sample: Sample name for individual VCF.
+    - individual_sample: Sample name for the individual VCF.
     """
     ref_name = extract_ref_name(fai_file)
     sorted_contig_lines = create_vcf_contig_lines(fai_file)
-
-    sample_list = read_sample_list(sample_file)
 
     vcf_file.write("##fileformat=VCFv4.1\n")
     vcf_file.write("##fileDate=" + datetime.now().strftime("%d%m%Y") + "\n")
@@ -208,113 +204,53 @@ def write_vcf_header(vcf_file, sample_file, fai_file, is_combined=False, individ
     vcf_file.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n")
     vcf_file.write("##FORMAT=<ID=Q_SOME,Number=1,Type=Float,Description=\"Quality score of the CNV event\">\n")
 
-    if is_combined:
-        vcf_file.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT")
-        vcf_file.write("\t" + "\t".join(sample_list) + "\n")
-    else:
-        if individual_sample:
-            vcf_file.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + individual_sample + "\n")
-        else:
-            raise ValueError("individual_sample must be provided for individual VCF header.")
+    vcf_file.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + individual_sample + "\n")
 
 
-def write_vcf_mutations(vcf_file, input_file, sample_file, is_combined=False, individual_sample=None, log_file=None):
+def write_vcf_mutations(vcf_file, input_file, sample_file, individual_sample, log_file=None):
     """
     Write mutations to the VCF file.
     """
     if log_file:
         setup_logging(log_file)
 
-    sample_list = read_sample_list(sample_file)
     mutation_list, mutations_by_sample = convert_clamms_bed_to_dict(input_file, sample_file, log_file)
 
-    if is_combined:
-        seen_variants = set()
-        for sample, mutations in mutations_by_sample.items():
-            for mutation in mutations:
-                key = (mutation['CHROM'], mutation['INTERVAL'])
-                if key in seen_variants:
-                    continue
+    if individual_sample not in mutations_by_sample:
+        return
 
-                seen_variants.add(key)
-                chr_num = mutation['CHROM']
-                if chr_num in ['X', 'Y', 'chrX', 'chrY']:
-                    continue
+    for mutation in mutations_by_sample[individual_sample]:
+        chr_num = mutation['CHROM']
+        if chr_num in ['X', 'Y', 'chrX', 'chrY']:
+            continue
 
-                cnv = mutation['CNV_TYPE']
-                interval = mutation['INTERVAL']
-                start = mutation['START']
-                end = mutation['END']
-                mlcn = mutation['MLCN']
-                num_windows = mutation['NUM_WINDOWS']
-                q_some = safe_float(mutation['Q_SOME'])
-                q_exact = safe_float(mutation['Q_EXACT'])
+        cnv = mutation['CNV_TYPE']
+        start = mutation['START']
+        end = mutation['END']
+        mlcn = mutation['MLCN']
+        num_windows = mutation['NUM_WINDOWS']
+        q_some = safe_float(mutation['Q_SOME'])
+        q_exact = safe_float(mutation['Q_EXACT'])
 
-                svmethod = 'CLAMMS'
-                strand = '.'
-                ref = 'N'
-                alt = f'<{cnv}>'
+        svmethod = 'CLAMMS'
+        strand = '.'
+        ref = 'N'
+        alt = f'<{cnv}>'
 
-                svlen = safe_int(end) - safe_int(start) + 1
+        svlen = safe_int(end) - safe_int(start) + 1
 
-                info = f"END={end};SVLEN={svlen};SVTYPE=CNV;TOOL={svmethod};STRANDS={strand};NUM_WINDOWS={num_windows};MLCN={mlcn};Q_SOME={q_some};"
+        info = f"END={end};SVLEN={svlen};SVTYPE=CNV;TOOL={svmethod};STRANDS={strand}"
 
-                filter_status = 'PASS' if q_some >= 500 and q_exact >= 0 else 'LowQuality'
-                format_field = "GT:Q_SOME"
-                chrom_formatted = f"chr{chr_num}" if not str(chr_num).startswith("chr") else chr_num
+        filter_status = 'PASS' if q_some >= 500 and q_exact >= 0 else 'LowQuality'
+        format_field = "GT:Q_SOME"
+        chrom_formatted = f"chr{chr_num}" if not str(chr_num).startswith("chr") else chr_num
 
-                vcf_file.write(f"{chrom_formatted}\t{start}\t.\t{ref}\t{alt}\t.\t{filter_status}\t{info}\t{format_field}")
-
-                for sample_id in sample_list:
-                    mutation_found = False
-                    for sample_mutation in mutations_by_sample.get(sample_id, []):
-                        if sample_mutation['CHROM'] == chr_num and sample_mutation['INTERVAL'] == interval:
-                            vcf_file.write(f"\t./.:{safe_float(sample_mutation['Q_SOME'])}")
-                            mutation_found = True
-                            break
-
-                    if not mutation_found:
-                        vcf_file.write("\t./.:0")
-
-                vcf_file.write("\n")
-
-    else:
-        if individual_sample not in mutations_by_sample:
-            return
-
-        for mutation in mutations_by_sample[individual_sample]:
-            chr_num = mutation['CHROM']
-            if chr_num in ['X', 'Y', 'chrX', 'chrY']:
-                continue
-
-            cnv = mutation['CNV_TYPE']
-            interval = mutation['INTERVAL']
-            start = mutation['START']
-            end = mutation['END']
-            mlcn = mutation['MLCN']
-            num_windows = mutation['NUM_WINDOWS']
-            q_some = safe_float(mutation['Q_SOME'])
-            q_exact = safe_float(mutation['Q_EXACT'])
-
-            svmethod = 'CLAMMS'
-            strand = '.'
-            ref = 'N'
-            alt = f'<{cnv}>'
-
-            svlen = safe_int(end) - safe_int(start) + 1
-
-            info = f"END={end};SVLEN={svlen};SVTYPE=CNV;TOOL={svmethod};STRANDS={strand}"
-
-            filter_status = 'PASS' if q_some >= 500 and q_exact >= 0 else 'LowQuality'
-            format_field = "GT:Q_SOME"
-            chrom_formatted = f"chr{chr_num}" if not str(chr_num).startswith("chr") else chr_num
-
-            vcf_file.write(f"{chrom_formatted}\t{start}\t.\t{ref}\t{alt}\t.\t{filter_status}\t{info}\t{format_field}\t./.:{q_some}\n")
+        vcf_file.write(f"{chrom_formatted}\t{start}\t.\t{ref}\t{alt}\t.\t{filter_status}\t{info}\t{format_field}\t./.:{q_some}\n")
 
 
-def process_clamms_data(input_file, sample_file, fai_file, output_dir, is_combined=False, log_file=None):
+def process_clamms_data(input_file, sample_file, fai_file, output_dir, log_file=None):
     """
-    Process CLAMMS data and generate VCF files for each sample or combined.
+    Process CLAMMS data and generate individual VCF files for each sample.
     """
     if log_file:
         setup_logging(log_file)
@@ -327,20 +263,14 @@ def process_clamms_data(input_file, sample_file, fai_file, output_dir, is_combin
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        if is_combined:
-            combined_vcf_path = os.path.join(output_dir, "combined_CLAMMS_output.vcf")
-            with open(combined_vcf_path, 'w') as vcf_file:
-                write_vcf_header(vcf_file, sample_file, fai_file, is_combined=True)
-                write_vcf_mutations(vcf_file, input_file, sample_file, is_combined=True, log_file=None)
-        else:
-            for sample in sample_list:
-                mutations = mutations_by_sample.get(sample, [])
-                if not mutations:  # Only write VCF if there is at least one mutation
-                    continue
-                individual_vcf_path = os.path.join(output_dir, f"{sample}_CLAMMS_output.vcf")
-                with open(individual_vcf_path, 'w') as vcf_file:
-                    write_vcf_header(vcf_file, sample_file, fai_file, is_combined=False, individual_sample=sample)
-                    write_vcf_mutations(vcf_file, input_file, sample_file, is_combined=False, individual_sample=sample, log_file=None)
+        for sample in sample_list:
+            mutations = mutations_by_sample.get(sample, [])
+            if not mutations:  # Only write VCF if there is at least one mutation
+                continue
+            individual_vcf_path = os.path.join(output_dir, f"{sample}_CLAMMS_output.vcf")
+            with open(individual_vcf_path, 'w') as vcf_file:
+                write_vcf_header(vcf_file, fai_file, individual_sample=sample)
+                write_vcf_mutations(vcf_file, input_file, sample_file, individual_sample=sample, log_file=None)
 
 
 def main():
@@ -351,13 +281,12 @@ def main():
     parser.add_argument('--input_file', type=str, required=True, help="Path to CLAMMS BED file.")
     parser.add_argument('--sample_file', type=str, required=True, help="Path to sample list file.")
     parser.add_argument('--output_dir', type=str, required=True, help="Directory to save output VCF files.")
-    parser.add_argument('--combined', action='store_true', help="Generate combined VCF file.")
     parser.add_argument('--fai_file', type=str, required=True, help="FASTA Index File")
     parser.add_argument('--log_file', type=str, default=None, help="Optional log file.")
 
     args = parser.parse_args()
 
-    process_clamms_data(args.input_file, args.sample_file, args.fai_file, args.output_dir, is_combined=args.combined, log_file=args.log_file)
+    process_clamms_data(args.input_file, args.sample_file, args.fai_file, args.output_dir, log_file=args.log_file)
 
 
 if __name__ == "__main__":
