@@ -5,12 +5,12 @@ nextflow.enable.dsl=2
 // MODULE INCLUDES
 // =====================================================================================
 include { run_Fetch; run_Aggregate; run_Score; run_Database; run_Annotate; run_DenovoTrio; run_DenovoMom; run_DenovoDad; filterINDELIBLE } from './modules/modules-indelible.nf'
-include { genReadCounts; calcGC_CANOES; runCANOES; filterCANOESCNVs; convertCanoesToVcf } from './modules/modules-canoes.nf'
-include { groupBAMs; gatkDOC; combineDOC; calcGC_XHMM; filterSamples; runPCA; normalisePCA; filterZScore; filterRD; discoverCNVs; genotypeCNVs; splitVCF; filterXHMMCNVs } from './modules/modules-xhmm.nf'
-include { generateWindows; samtoolsDOC; normalizeDOC; createPCAData; getPicardQCMetrics; getPicardMeanInsertSize; combinePicardQCMetrics; createCustomRefPanel; trainModels; callCNVs; filterCLAMMSCNVs; convertClammsToVcf } from './modules/modules-clamms.nf'
+include { CANOES } from './modules/modules-canoes.nf'
+include { XHMM } from './modules/modules-xhmm.nf'
+include { CLAMMS } from './modules/modules-clamms.nf'
 include { uploadCramFiles; getStaticFiles; checkFileStatus; startAnalysisBatch; checkAnalysisStatus; downloadAnalysisOutput; deleteData; addDragenToolAnnotation } from './modules/modules-icav2-dragen.nf'
-include { GENERATE_ACCESS; AUTOBIN; COVERAGE; CREATE_POOLED_REFERENCE; CALL_CNV; EXPORT_RESULTS } from './modules/modules-cnvkit.nf'
-include { GENERATE_PLOIDY_PRIORS; PREPROCESS_INTERVALS; ANNOTATE_INTERVALS; COLLECT_READ_COUNTS; FILTER_INTERVALS; DETERMINE_PLOIDY_COHORT; SCATTER_INTERVALS; GERMLINE_CNV_CALLER_COHORT; POSTPROCESS_CALLS } from './modules/modules-gcnv.nf'
+include { CNVKIT } from './modules/modules-cnvkit.nf'
+include { GATK_GCNV } from './modules/modules-gatk-gcnv.nf'
 include { runSurvivorMerge } from './modules/modules-survivor.nf'
 include { runTruvariCollapse } from './modules/modules-truvari.nf'
 
@@ -75,38 +75,16 @@ workflow RUN_CANOES {
         chroms
         fai
     main:
-        calcGC_CANOES(chroms)
-        
-        // Extract the list of samples from the BAMs directly for the Python script
-        bams.map { it -> it[0] + '\n' }.collectFile(name: 'sample_list.txt').set { sample_list }
-        
-        bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] }.set { bam_list }
-        genReadCounts(bam_list, chroms)
-        genReadCounts.out.chr_reads_cov.join(calcGC_CANOES.out.chr_gc_content).set { chr_canoes_input }
-        runCANOES(chr_canoes_input)
-        runCANOES.out.chr_cnvs_pass.map { it -> it[1] }.collect().set { all_cnvs_pass }
-        filterCANOESCNVs(all_cnvs_pass)
-        
-        convertCanoesToVcf(filterCANOESCNVs.out.filtered_cnvs, sample_list, fai)
+        bam_list = bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] }
+        CANOES(bam_list, fai, Channel.from(chroms))
 }
 
 workflow RUN_XHMM {
     take: 
         bams
     main:
-        groupBAMs(bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] })
-        gatkDOC(groupBAMs.out.bam_groups.flatMap().map { it -> [it.name[0..-6], it] })
-        combineDOC(gatkDOC.out.bam_group_doc.collect { it -> it[1] })
-        calcGC_XHMM()
-        filterSamples(combineDOC.out.combined_doc, calcGC_XHMM.out.extreme_gc_targets)
-        runPCA(filterSamples.out.filtered_centered)
-        normalisePCA(filterSamples.out.filtered_centered, runPCA.out.pca_data)
-        filterZScore(normalisePCA.out.data_pca_norm)
-        filterRD(combineDOC.out.combined_doc, filterSamples.out.excluded_filtered_targets, filterZScore.out.excluded_zscore_targets, filterSamples.out.excluded_filtered_samples, filterZScore.out.excluded_zscore_samples)
-        discoverCNVs(filterRD.out.orig_filtered, filterZScore.out.pca_norm_zscore)
-        genotypeCNVs(filterRD.out.orig_filtered, filterZScore.out.pca_norm_zscore, discoverCNVs.out.cnvs)
-        splitVCF(genotypeCNVs.out.genotypes.flatten().filter { it.name == 'DATA.vcf' })
-        filterXHMMCNVs(splitVCF.out.individual_vcfs)
+        bam_list = bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] }
+        XHMM(bam_list)
 }
 
 workflow RUN_CLAMMS {
@@ -114,27 +92,8 @@ workflow RUN_CLAMMS {
         bams
         fai
     main:
-        generateWindows()
-        samtoolsDOC(bams, generateWindows.out.windows)
-        normalizeDOC(samtoolsDOC.out.coverage, generateWindows.out.windows)
-        normalizeDOC.out.norm_coverage.map { it -> it[1] }.collect().set { norm_coverage_files }
-        createPCAData(norm_coverage_files)
-        getPicardQCMetrics(bams)
-        getPicardMeanInsertSize(bams)
-        getPicardQCMetrics.out.qc_metrics.join(getPicardMeanInsertSize.out.ins_size_metrics, by: 0).map { it -> [ it[1], it[2] ] }.flatten().collect().set { picard_metrics }
-        combinePicardQCMetrics(picard_metrics)
-        createCustomRefPanel(norm_coverage_files, createPCAData.out.pca_data, combinePicardQCMetrics.out.qcs_metrics)
-        createCustomRefPanel.out.ref_panel.flatten().map { it -> [ "${it.baseName.replaceAll('.ref.panel.files','')}", it ] }.set { for_training }
-        trainModels(for_training, generateWindows.out.windows, norm_coverage_files)
-        trainModels.out.sample_models.join(normalizeDOC.out.norm_coverage).set { cllin }
-        callCNVs(cllin)
-        filterCLAMMSCNVs(callCNVs.out.cnvs.map { it -> it[1] }.collect())
-        
-        // Extract the list of samples from the BAMs directly to generate the sample list text file
-        bams.map { it -> it[0] + '\n' }.collectFile(name: 'sample_list.txt').set { sample_list }
-        
-        // Pass the output of filterCLAMMSCNVs (assuming it outputs the BED), the sample list, and the FAI index
-        convertClammsToVcf(filterCLAMMSCNVs.out.filtered_cnvs, sample_list, fai)
+        sample_list = bams.map { it -> it[0] + '\n' }.collectFile(name: 'sample_list.txt')
+        CLAMMS(bams, fai, sample_list)
 }
 
 workflow RUN_DRAGEN {
@@ -159,15 +118,7 @@ workflow RUN_CNVKIT {
         targets
         refflat
     main:
-        access_ch = GENERATE_ACCESS(fasta)
-        first_bam_ch = bams.first().map { it[1] }
-        bins_ch = AUTOBIN(fasta, targets, access_ch, refflat, first_bam_ch)
-        cov_ch = COVERAGE(bams, bins_ch.target_bed.collect(), bins_ch.antitarget_bed.collect())
-        all_covs = cov_ch.target_cov.map { it[1] }.concat(cov_ch.antitarget_cov.map { it[1] }).collect()
-        ref_cnn = CREATE_POOLED_REFERENCE(fasta, all_covs)
-        cov_pairs = cov_ch.target_cov.join(cov_ch.antitarget_cov)
-        calls_ch = CALL_CNV(cov_pairs, ref_cnn.collect())
-        EXPORT_RESULTS(calls_ch.results)
+        CNVKIT(bams, fasta, targets, refflat, bams.first().map { it[1] })
 }
 
 workflow RUN_GCNV {
@@ -178,27 +129,7 @@ workflow RUN_GCNV {
         dict
         targets
     main:
-        GENERATE_PLOIDY_PRIORS(fai)
-        PREPROCESS_INTERVALS(fasta, fai, dict, targets)
-        COLLECT_READ_COUNTS(bams, PREPROCESS_INTERVALS.out.interval_list, fasta, fai, dict)
-        ANNOTATE_INTERVALS(PREPROCESS_INTERVALS.out.interval_list, fasta, fai, dict)
-        
-        ch_all_counts = COLLECT_READ_COUNTS.out.counts.map { it[1] }.collect()
-        
-        FILTER_INTERVALS(PREPROCESS_INTERVALS.out.interval_list, ANNOTATE_INTERVALS.out.annotated_intervals, ch_all_counts)
-        DETERMINE_PLOIDY_COHORT(FILTER_INTERVALS.out.filtered_intervals, ch_all_counts, GENERATE_PLOIDY_PRIORS.out.priors)
-        SCATTER_INTERVALS(FILTER_INTERVALS.out.filtered_intervals)
-        
-        ch_scatters = SCATTER_INTERVALS.out.shards.flatten()
-        GERMLINE_CNV_CALLER_COHORT(ch_scatters, ANNOTATE_INTERVALS.out.annotated_intervals, ch_all_counts, DETERMINE_PLOIDY_COHORT.out.ploidy_calls)
-        
-        ch_ploidy_calls = DETERMINE_PLOIDY_COHORT.out.ploidy_calls
-        ch_model_shards = GERMLINE_CNV_CALLER_COHORT.out.model.collect()
-        ch_call_shards = GERMLINE_CNV_CALLER_COHORT.out.calls.collect()
-        
-        ch_sample_metadata = COLLECT_READ_COUNTS.out.counts.toSortedList({ a, b -> a[0] <=> b[0] }).flatten().map { it -> it[0] }.indexed()
-
-        POSTPROCESS_CALLS(ch_sample_metadata, ch_model_shards, ch_call_shards, ch_ploidy_calls, dict)
+        GATK_GCNV(bams, fasta, fai, dict, targets)
 }
 
 workflow RUN_SURVIVOR {

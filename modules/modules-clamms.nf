@@ -297,9 +297,9 @@ process convertClammsToVcf {
     """
 }
 
-// Process to bgzip, sort, and index the produced VCF file
-process run_BCFtools {
-    tag "bcftools"
+// Process to bgzip, sort, index, and annotate the produced VCF file with TOOL=CLAMMS
+process BGZIP_SORT_INDEX_VCF {
+    tag "${vcf_file.simpleName}"
     label 'clamms|bedtools'
     publishDir "${outdir}/out_CLAMMS/vcfs", mode: 'copy', overwrite: true
 
@@ -311,19 +311,38 @@ process run_BCFtools {
     path("*.sorted.vcf.gz.tbi"), emit: sorted_vcf_index
 
     script:
-    def sorted_gz = "${vcf_file.simpleName}.sorted.vcf.gz"
+    def sample_name = vcf_file.simpleName
+    def sorted_gz   = "${sample_name}.sorted.vcf.gz"
     """
-    # bgzip the VCF
-    bgzip -c ${vcf_file} > ${vcf_file}.gz
+    # Create extra header line for the TOOL INFO field
+    printf '##INFO=<ID=TOOL,Number=1,Type=String,Description="Calling tool">\\n' > extra_header.txt
 
-    # Sort the bgzipped VCF
-    bcftools sort ${vcf_file}.gz -o ${sorted_gz} -O z
+    # Build a BED annotation file with TOOL=CLAMMS for every variant
+    bcftools query -f '%CHROM\\t%POS0\\t%END\\n' ${vcf_file} | \\
+        awk 'BEGIN{OFS="\\t"} {print \$1, \$2, \$3, "CLAMMS"}' | \\
+        bgzip -c > ${sample_name}_tool_annot.bed.gz
+    tabix -p bed ${sample_name}_tool_annot.bed.gz
+
+    # Annotate the VCF with TOOL=CLAMMS in the INFO field
+    bcftools annotate \\
+        -a ${sample_name}_tool_annot.bed.gz \\
+        -c CHROM,FROM,TO,INFO/TOOL \\
+        -h extra_header.txt \\
+        ${vcf_file} \\
+        -O v -o ${sample_name}_annotated.vcf
+
+    # Compress the annotated VCF with bgzip
+    bgzip -c ${sample_name}_annotated.vcf > ${sample_name}_annotated.vcf.gz
+
+    # Sort the compressed VCF
+    bcftools sort ${sample_name}_annotated.vcf.gz -o ${sorted_gz} -O z
 
     # Index the sorted VCF
     tabix -p vcf ${sorted_gz}
 
-    # Remove the intermediate unsorted gz
-    rm ${vcf_file}.gz
+    # Remove intermediate files
+    rm -f ${sample_name}_tool_annot.bed.gz ${sample_name}_tool_annot.bed.gz.tbi \\
+          ${sample_name}_annotated.vcf ${sample_name}_annotated.vcf.gz
     """
 }
 
@@ -397,9 +416,9 @@ workflow CLAMMS {
     )
 
     // Step 12: Sort, compress, and index the VCF
-    run_BCFtools(convertClammsToVcf.out.vcfs)
+    BGZIP_SORT_INDEX_VCF(convertClammsToVcf.out.vcfs)
 
     emit:
-    sorted_vcf       = run_BCFtools.out.sorted_vcf
-    sorted_vcf_index = run_BCFtools.out.sorted_vcf_index
+    sorted_vcf       = BGZIP_SORT_INDEX_VCF.out.sorted_vcf
+    sorted_vcf_index = BGZIP_SORT_INDEX_VCF.out.sorted_vcf_index
 }
