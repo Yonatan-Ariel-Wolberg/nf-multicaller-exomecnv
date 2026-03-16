@@ -9,7 +9,7 @@ include { genReadCounts; calcGC_CANOES; runCANOES; filterCANOESCNVs; convertCano
 include { groupBAMs; gatkDOC; combineDOC; calcGC_XHMM; filterSamples; runPCA; normalisePCA; filterZScore; filterRD; discoverCNVs; genotypeCNVs; splitVCF; filterXHMMCNVs } from './modules/modules-xhmm.nf'
 include { generateWindows; samtoolsDOC; normalizeDOC; createPCAData; getPicardQCMetrics; getPicardMeanInsertSize; combinePicardQCMetrics; createCustomRefPanel; trainModels; callCNVs; filterCLAMMSCNVs; convertClammsToVcf } from './modules/modules-clamms.nf'
 include { uploadCramFiles; getStaticFiles; checkFileStatus; startAnalysisBatch; checkAnalysisStatus; downloadAnalysisOutput; deleteData; addDragenToolAnnotation } from './modules/modules-icav2-dragen.nf'
-include { GENERATE_ACCESS; AUTOBIN; COVERAGE; CREATE_POOLED_REFERENCE; CALL_CNV; EXPORT_RESULTS; BGZIP_SORT_INDEX_VCF } from './modules/modules-cnvkit.nf'
+include { CNVKIT } from './modules/modules-cnvkit.nf'
 include { GENERATE_PLOIDY_PRIORS; PREPROCESS_INTERVALS; ANNOTATE_INTERVALS; COLLECT_READ_COUNTS; FILTER_INTERVALS; DETERMINE_PLOIDY_COHORT; SCATTER_INTERVALS; GERMLINE_CNV_CALLER_COHORT; POSTPROCESS_CALLS } from './modules/modules-gcnv.nf'
 include { runSurvivorMerge } from './modules/modules-survivor.nf'
 include { runTruvariCollapse } from './modules/modules-truvari.nf'
@@ -159,16 +159,7 @@ workflow RUN_CNVKIT {
         targets
         refflat
     main:
-        access_ch = GENERATE_ACCESS(fasta)
-        first_bam_ch = bams.first().map { it[1] }
-        bins_ch = AUTOBIN(fasta, targets, access_ch, refflat, first_bam_ch)
-        cov_ch = COVERAGE(bams, bins_ch.target_bed.collect(), bins_ch.antitarget_bed.collect())
-        all_covs = cov_ch.target_cov.map { it[1] }.concat(cov_ch.antitarget_cov.map { it[1] }).collect()
-        ref_cnn = CREATE_POOLED_REFERENCE(fasta, all_covs)
-        cov_pairs = cov_ch.target_cov.join(cov_ch.antitarget_cov)
-        calls_ch = CALL_CNV(cov_pairs, ref_cnn.collect())
-        EXPORT_RESULTS(calls_ch.results)
-        BGZIP_SORT_INDEX_VCF(EXPORT_RESULTS.out.vcf)
+        CNVKIT(bams, fasta, targets, refflat, bams.first().map { it[1] })
 }
 
 workflow RUN_GCNV {
