@@ -9,7 +9,7 @@ include { genReadCounts; calcGC_CANOES; runCANOES; filterCANOESCNVs; convertCano
 include { groupBAMs; gatkDOC; combineDOC; calcGC_XHMM; filterSamples; runPCA; normalisePCA; filterZScore; filterRD; discoverCNVs; genotypeCNVs; splitVCF; filterXHMMCNVs } from './modules/modules-xhmm.nf'
 include { generateWindows; samtoolsDOC; normalizeDOC; createPCAData; getPicardQCMetrics; getPicardMeanInsertSize; combinePicardQCMetrics; createCustomRefPanel; trainModels; callCNVs; filterCLAMMSCNVs; convertClammsToVcf } from './modules/modules-clamms.nf'
 include { uploadCramFiles; getStaticFiles; checkFileStatus; startAnalysisBatch; checkAnalysisStatus; downloadAnalysisOutput; deleteData; addDragenToolAnnotation } from './modules/modules-icav2-dragen.nf'
-include { GENERATE_ACCESS; AUTOBIN; COVERAGE; CREATE_POOLED_REFERENCE; CALL_CNV; EXPORT_RESULTS } from './modules/modules-cnvkit.nf'
+include { GENERATE_ACCESS; AUTOBIN; COVERAGE; CREATE_POOLED_REFERENCE; CALL_CNV; EXPORT_RESULTS; BGZIP_SORT_INDEX_VCF } from './modules/modules-cnvkit.nf'
 include { GENERATE_PLOIDY_PRIORS; PREPROCESS_INTERVALS; ANNOTATE_INTERVALS; COLLECT_READ_COUNTS; FILTER_INTERVALS; DETERMINE_PLOIDY_COHORT; SCATTER_INTERVALS; GERMLINE_CNV_CALLER_COHORT; POSTPROCESS_CALLS } from './modules/modules-gcnv.nf'
 include { runSurvivorMerge } from './modules/modules-survivor.nf'
 include { runTruvariCollapse } from './modules/modules-truvari.nf'
@@ -168,6 +168,7 @@ workflow RUN_CNVKIT {
         cov_pairs = cov_ch.target_cov.join(cov_ch.antitarget_cov)
         calls_ch = CALL_CNV(cov_pairs, ref_cnn.collect())
         EXPORT_RESULTS(calls_ch.results)
+        BGZIP_SORT_INDEX_VCF(EXPORT_RESULTS.out.vcf)
 }
 
 workflow RUN_GCNV {
