@@ -5,9 +5,9 @@ nextflow.enable.dsl=2
 // MODULE INCLUDES
 // =====================================================================================
 include { run_Fetch; run_Aggregate; run_Score; run_Database; run_Annotate; run_DenovoTrio; run_DenovoMom; run_DenovoDad; filterINDELIBLE } from './modules/modules-indelible.nf'
-include { genReadCounts; calcGC_CANOES; runCANOES; filterCANOESCNVs; convertCanoesToVcf } from './modules/modules-canoes.nf'
+include { CANOES } from './modules/modules-canoes.nf'
 include { groupBAMs; gatkDOC; combineDOC; calcGC_XHMM; filterSamples; runPCA; normalisePCA; filterZScore; filterRD; discoverCNVs; genotypeCNVs; splitVCF; filterXHMMCNVs } from './modules/modules-xhmm.nf'
-include { generateWindows; samtoolsDOC; normalizeDOC; createPCAData; getPicardQCMetrics; getPicardMeanInsertSize; combinePicardQCMetrics; createCustomRefPanel; trainModels; callCNVs; filterCLAMMSCNVs; convertClammsToVcf } from './modules/modules-clamms.nf'
+include { CLAMMS } from './modules/modules-clamms.nf'
 include { uploadCramFiles; getStaticFiles; checkFileStatus; startAnalysisBatch; checkAnalysisStatus; downloadAnalysisOutput; deleteData; addDragenToolAnnotation } from './modules/modules-icav2-dragen.nf'
 include { CNVKIT } from './modules/modules-cnvkit.nf'
 include { GENERATE_PLOIDY_PRIORS; PREPROCESS_INTERVALS; ANNOTATE_INTERVALS; COLLECT_READ_COUNTS; FILTER_INTERVALS; DETERMINE_PLOIDY_COHORT; SCATTER_INTERVALS; GERMLINE_CNV_CALLER_COHORT; POSTPROCESS_CALLS } from './modules/modules-gcnv.nf'
@@ -75,19 +75,8 @@ workflow RUN_CANOES {
         chroms
         fai
     main:
-        calcGC_CANOES(chroms)
-        
-        // Extract the list of samples from the BAMs directly for the Python script
-        bams.map { it -> it[0] + '\n' }.collectFile(name: 'sample_list.txt').set { sample_list }
-        
-        bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] }.set { bam_list }
-        genReadCounts(bam_list, chroms)
-        genReadCounts.out.chr_reads_cov.join(calcGC_CANOES.out.chr_gc_content).set { chr_canoes_input }
-        runCANOES(chr_canoes_input)
-        runCANOES.out.chr_cnvs_pass.map { it -> it[1] }.collect().set { all_cnvs_pass }
-        filterCANOESCNVs(all_cnvs_pass)
-        
-        convertCanoesToVcf(filterCANOESCNVs.out.filtered_cnvs, sample_list, fai)
+        bam_list = bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] }
+        CANOES(bam_list, fai, Channel.from(chroms))
 }
 
 workflow RUN_XHMM {
@@ -114,27 +103,8 @@ workflow RUN_CLAMMS {
         bams
         fai
     main:
-        generateWindows()
-        samtoolsDOC(bams, generateWindows.out.windows)
-        normalizeDOC(samtoolsDOC.out.coverage, generateWindows.out.windows)
-        normalizeDOC.out.norm_coverage.map { it -> it[1] }.collect().set { norm_coverage_files }
-        createPCAData(norm_coverage_files)
-        getPicardQCMetrics(bams)
-        getPicardMeanInsertSize(bams)
-        getPicardQCMetrics.out.qc_metrics.join(getPicardMeanInsertSize.out.ins_size_metrics, by: 0).map { it -> [ it[1], it[2] ] }.flatten().collect().set { picard_metrics }
-        combinePicardQCMetrics(picard_metrics)
-        createCustomRefPanel(norm_coverage_files, createPCAData.out.pca_data, combinePicardQCMetrics.out.qcs_metrics)
-        createCustomRefPanel.out.ref_panel.flatten().map { it -> [ "${it.baseName.replaceAll('.ref.panel.files','')}", it ] }.set { for_training }
-        trainModels(for_training, generateWindows.out.windows, norm_coverage_files)
-        trainModels.out.sample_models.join(normalizeDOC.out.norm_coverage).set { cllin }
-        callCNVs(cllin)
-        filterCLAMMSCNVs(callCNVs.out.cnvs.map { it -> it[1] }.collect())
-        
-        // Extract the list of samples from the BAMs directly to generate the sample list text file
-        bams.map { it -> it[0] + '\n' }.collectFile(name: 'sample_list.txt').set { sample_list }
-        
-        // Pass the output of filterCLAMMSCNVs (assuming it outputs the BED), the sample list, and the FAI index
-        convertClammsToVcf(filterCLAMMSCNVs.out.filtered_cnvs, sample_list, fai)
+        sample_list = bams.map { it -> it[0] + '\n' }.collectFile(name: 'sample_list.txt')
+        CLAMMS(bams, fai, sample_list)
 }
 
 workflow RUN_DRAGEN {
