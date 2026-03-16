@@ -9,7 +9,7 @@ nextflow.enable.dsl=2
 params.ref               = ''
 params.probes            = ''
 params.outdir            = 'results'
-params.canoes_batch_size = 200  // BAMs per bedtools multicov job; reduce if hitting memory limits
+params.canoes_batch_size = 100  // BAMs per bedtools multicov job; reduce if hitting memory limits
 
 ref    = file(params.ref, type: 'file')
 probes = file(params.probes, type: 'file')
