@@ -6,7 +6,7 @@ nextflow.enable.dsl=2
 // =====================================================================================
 include { run_Fetch; run_Aggregate; run_Score; run_Database; run_Annotate; run_DenovoTrio; run_DenovoMom; run_DenovoDad; filterINDELIBLE } from './modules/modules-indelible.nf'
 include { CANOES } from './modules/modules-canoes.nf'
-include { groupBAMs; gatkDOC; combineDOC; calcGC_XHMM; filterSamples; runPCA; normalisePCA; filterZScore; filterRD; discoverCNVs; genotypeCNVs; splitVCF; filterXHMMCNVs } from './modules/modules-xhmm.nf'
+include { XHMM } from './modules/modules-xhmm.nf'
 include { CLAMMS } from './modules/modules-clamms.nf'
 include { uploadCramFiles; getStaticFiles; checkFileStatus; startAnalysisBatch; checkAnalysisStatus; downloadAnalysisOutput; deleteData; addDragenToolAnnotation } from './modules/modules-icav2-dragen.nf'
 include { CNVKIT } from './modules/modules-cnvkit.nf'
@@ -83,19 +83,8 @@ workflow RUN_XHMM {
     take: 
         bams
     main:
-        groupBAMs(bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] })
-        gatkDOC(groupBAMs.out.bam_groups.flatMap().map { it -> [it.name[0..-6], it] })
-        combineDOC(gatkDOC.out.bam_group_doc.collect { it -> it[1] })
-        calcGC_XHMM()
-        filterSamples(combineDOC.out.combined_doc, calcGC_XHMM.out.extreme_gc_targets)
-        runPCA(filterSamples.out.filtered_centered)
-        normalisePCA(filterSamples.out.filtered_centered, runPCA.out.pca_data)
-        filterZScore(normalisePCA.out.data_pca_norm)
-        filterRD(combineDOC.out.combined_doc, filterSamples.out.excluded_filtered_targets, filterZScore.out.excluded_zscore_targets, filterSamples.out.excluded_filtered_samples, filterZScore.out.excluded_zscore_samples)
-        discoverCNVs(filterRD.out.orig_filtered, filterZScore.out.pca_norm_zscore)
-        genotypeCNVs(filterRD.out.orig_filtered, filterZScore.out.pca_norm_zscore, discoverCNVs.out.cnvs)
-        splitVCF(genotypeCNVs.out.genotypes.flatten().filter { it.name == 'DATA.vcf' })
-        filterXHMMCNVs(splitVCF.out.individual_vcfs)
+        bam_list = bams.collectFile() { item -> [ 'bam_list_unsorted.txt', "${item[1]}" + '\n' ] }
+        XHMM(bam_list)
 }
 
 workflow RUN_CLAMMS {
