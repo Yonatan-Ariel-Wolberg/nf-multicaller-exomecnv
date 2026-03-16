@@ -1,1 +1,14 @@
-{}
+{
+    "workflow": "gcnv",
+    "outdir": "./results",
+    "run_mode": "COHORT",
+    "samples_path": "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam}",
+    "fasta": "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa",
+    "fai": "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai",
+    "dict": "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.dict",
+    "exome_targets": "ref/targets.interval_list",
+    "bin_length": 0,
+    "padding": 250,
+    "is_wgs": false,
+    "scatter_count": 5000
+}
