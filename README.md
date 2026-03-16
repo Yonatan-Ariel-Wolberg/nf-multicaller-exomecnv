@@ -63,7 +63,7 @@ git clone https://github.com/Yonatan-Ariel-Wolberg/nf-multicaller-exomecnv.git
 cd nf-multicaller-exomecnv
 ```
 
-## Building the icav2_cli_v2.43.0.sif
+2. Build the icav2_cli_v2.43.0.sif
 ```bash
 apptainer build icav2_cli_v2.43.0.sif icav2.def
 ```
