@@ -30,7 +30,7 @@ outdir        = file(params.outdir)
 // =====================================================================================
 
 // Process to generate windows for analysis
-process generateWindows {
+process GENERATE_WINDOWS {
     tag "Generate_Windows"
     label 'clamms|bedtools'
 
@@ -48,7 +48,7 @@ process generateWindows {
 }
 
 // Process to calculate depth of coverage using samtools
-process samtoolsDOC {
+process SAMTOOLS_DOC {
     tag "${sample_id}"
     label 'clamms|bedtools'
 
@@ -70,7 +70,7 @@ process samtoolsDOC {
 }
 
 // Process to normalize depth of coverage
-process normalizeDOC {
+process NORMALIZE_DOC {
     tag "${sample_id}"
     label 'clamms|bedtools'
 
@@ -92,7 +92,7 @@ process normalizeDOC {
 }
 
 // Process to create PCA input data
-process createPCAData {
+process CREATE_PCA_DATA {
     tag "PCA_Data"
     label 'clamms|bedtools'
 
@@ -114,7 +114,7 @@ process createPCAData {
 }
 
 // Process to get QC metrics using Picard
-process getPicardQCMetrics {
+process GET_PICARD_QC_METRICS {
     tag "${sample_id}"
     label 'picard'
 
@@ -140,7 +140,7 @@ process getPicardQCMetrics {
 }
 
 // Process to get mean insert size metrics using Picard
-process getPicardMeanInsertSize {
+process GET_PICARD_MEAN_INSERT_SIZE {
     tag "${sample_id}"
     label 'picard'
 
@@ -164,7 +164,7 @@ process getPicardMeanInsertSize {
 }
 
 // Process to combine all QC metrics from Picard
-process combinePicardQCMetrics {
+process COMBINE_PICARD_QC_METRICS {
     tag "Combine_QC"
     label 'clamms|bedtools'
 
@@ -185,7 +185,7 @@ process combinePicardQCMetrics {
 }
 
 // Process to create a custom reference panel
-process createCustomRefPanel {
+process CREATE_CUSTOM_REF_PANEL {
     tag "Ref_Panel"
     label 'clamms|bedtools'
 
@@ -208,7 +208,7 @@ process createCustomRefPanel {
 }
 
 // Process to train models using the reference panel
-process trainModels {
+process TRAIN_MODELS {
     tag "${sample_id}"
     label 'clamms|bedtools'
 
@@ -231,7 +231,7 @@ process trainModels {
 }
 
 // Process to call CNVs from the trained models
-process callCNVs {
+process CALL_CNVS {
     tag "${sample_id}"
     label 'clamms|bedtools'
     publishDir "${outdir}/out_CLAMMS/calls", mode: 'copy', overwrite: true
@@ -253,7 +253,7 @@ process callCNVs {
 }
 
 // Process to filter CNVs based on criteria
-process filterCLAMMSCNVs {
+process FILTER_CLAMMS_CNVS {
     tag "Filter_CLAMMS"
     label 'clamms|bedtools'
     publishDir "${outdir}/out_CLAMMS", mode: 'copy', overwrite: true
@@ -277,7 +277,7 @@ process filterCLAMMSCNVs {
 
 
 // Process to convert CLAMMS BED to VCF using the Python script
-process convertClammsToVcf {
+process CONVERT_CLAMMS_TO_VCF {
     tag "BED_TO_VCF"
     label 'clamms|bedtools'
     publishDir "${outdir}/out_CLAMMS/vcfs", mode: 'copy', overwrite: true
@@ -358,65 +358,65 @@ workflow CLAMMS {
 
     main:
     // Step 1: Generate analysis windows
-    generateWindows()
+    GENERATE_WINDOWS()
 
     // Step 2: Calculate depth of coverage per sample
-    samtoolsDOC(bam_ch, generateWindows.out.windows)
+    SAMTOOLS_DOC(bam_ch, GENERATE_WINDOWS.out.windows)
 
     // Step 3: Normalize depth of coverage per sample
-    normalizeDOC(samtoolsDOC.out.coverage, generateWindows.out.windows)
+    NORMALIZE_DOC(SAMTOOLS_DOC.out.coverage, GENERATE_WINDOWS.out.windows)
 
     // Step 4: Collect normalized coverages and create PCA data
-    createPCAData(normalizeDOC.out.norm_coverage.map { sample_id, norm_cov -> norm_cov }.collect())
+    CREATE_PCA_DATA(NORMALIZE_DOC.out.norm_coverage.map { sample_id, norm_cov -> norm_cov }.collect())
 
     // Step 5: Get Picard QC metrics per sample
-    getPicardQCMetrics(bam_ch)
-    getPicardMeanInsertSize(bam_ch)
+    GET_PICARD_QC_METRICS(bam_ch)
+    GET_PICARD_MEAN_INSERT_SIZE(bam_ch)
 
     // Step 6: Combine all Picard QC metrics
-    all_metrics_ch = getPicardQCMetrics.out.qc_metrics
-        .mix(getPicardMeanInsertSize.out.ins_size_metrics)
+    all_metrics_ch = GET_PICARD_QC_METRICS.out.qc_metrics
+        .mix(GET_PICARD_MEAN_INSERT_SIZE.out.ins_size_metrics)
         .map { sample_id, metrics -> metrics }
         .collect()
 
-    combinePicardQCMetrics(all_metrics_ch)
+    COMBINE_PICARD_QC_METRICS(all_metrics_ch)
 
     // Step 7: Create custom reference panel using all normalized coverages
-    createCustomRefPanel(
-        normalizeDOC.out.norm_coverage.map { sample_id, norm_cov -> norm_cov }.collect(),
-        createPCAData.out.pca_data,
-        combinePicardQCMetrics.out.qcs_metrics
+    CREATE_CUSTOM_REF_PANEL(
+        NORMALIZE_DOC.out.norm_coverage.map { sample_id, norm_cov -> norm_cov }.collect(),
+        CREATE_PCA_DATA.out.pca_data,
+        COMBINE_PICARD_QC_METRICS.out.qcs_metrics
     )
 
     // Step 8: Train models per sample using its reference panel file
-    ref_panel_per_sample_ch = createCustomRefPanel.out.ref_panel
+    ref_panel_per_sample_ch = CREATE_CUSTOM_REF_PANEL.out.ref_panel
         .flatten()
         .map { file -> tuple(file.name.replace('.ref.panel.files', ''), file) }
 
-    trainModels(
+    TRAIN_MODELS(
         ref_panel_per_sample_ch,
-        generateWindows.out.windows,
-        normalizeDOC.out.norm_coverage.map { sample_id, norm_cov -> norm_cov }.collect()
+        GENERATE_WINDOWS.out.windows,
+        NORMALIZE_DOC.out.norm_coverage.map { sample_id, norm_cov -> norm_cov }.collect()
     )
 
     // Step 9: Call CNVs per sample by joining models with normalized coverage
-    call_cnv_input_ch = trainModels.out.sample_models
-        .join(normalizeDOC.out.norm_coverage, by: 0)
+    call_cnv_input_ch = TRAIN_MODELS.out.sample_models
+        .join(NORMALIZE_DOC.out.norm_coverage, by: 0)
 
-    callCNVs(call_cnv_input_ch)
+    CALL_CNVS(call_cnv_input_ch)
 
     // Step 10: Collect all CNV calls and filter
-    filterCLAMMSCNVs(callCNVs.out.cnvs.map { sample_id, cnv_file -> cnv_file }.collect())
+    FILTER_CLAMMS_CNVS(CALL_CNVS.out.cnvs.map { sample_id, cnv_file -> cnv_file }.collect())
 
     // Step 11: Convert filtered BED to VCF
-    convertClammsToVcf(
-        filterCLAMMSCNVs.out.filtered_cnvs,
+    CONVERT_CLAMMS_TO_VCF(
+        FILTER_CLAMMS_CNVS.out.filtered_cnvs,
         sample_file_ch,
         fai_ch
     )
 
     // Step 12: Sort, compress, and index the VCF
-    BGZIP_SORT_INDEX_VCF(convertClammsToVcf.out.vcfs)
+    BGZIP_SORT_INDEX_VCF(CONVERT_CLAMMS_TO_VCF.out.vcfs)
 
     emit:
     sorted_vcf       = BGZIP_SORT_INDEX_VCF.out.sorted_vcf

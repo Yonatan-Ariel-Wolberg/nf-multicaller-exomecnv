@@ -11,7 +11,7 @@ outdir = file(params.outdir, type: 'dir')
 // PROCESSES FOR SURVIVOR
 // =====================================================================================
 
-process runSurvivorMerge {
+process RUN_SURVIVOR_MERGE {
     tag "${sample_id}"
     label 'survivor'
     publishDir "${outdir}/out_SURVIVOR/${sample_id}", mode: 'copy', overwrite: true
@@ -62,8 +62,8 @@ workflow SURVIVOR {
         grouped_vcfs
 
     main:
-        runSurvivorMerge(grouped_vcfs)
+        RUN_SURVIVOR_MERGE(grouped_vcfs)
 
     emit:
-        merged_vcf = runSurvivorMerge.out.merged_vcf
+        merged_vcf = RUN_SURVIVOR_MERGE.out.merged_vcf
 }
