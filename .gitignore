@@ -1,0 +1,10 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Nextflow work directories and caches
+work/
+.nextflow/
+.nextflow.log*
+results/
