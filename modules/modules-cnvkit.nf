@@ -100,7 +100,7 @@ process CREATE_POOLED_REFERENCE {
     
     script: 
     """
-    cnvkit.py reference ${covs} --fasta $fasta -o pooled_reference.cnn
+    cnvkit.py reference *.cnn --fasta $fasta -o pooled_reference.cnn
     """
 }
 

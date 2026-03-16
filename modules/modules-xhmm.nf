@@ -8,6 +8,7 @@ nextflow.enable.dsl=2
 // =====================================================================================
 // GLOBAL FILE INSTANTIATION
 // =====================================================================================
+params.xhmm_batch_size = 50  // BAMs per GATK DepthOfCoverage job; increase for fewer but larger jobs
 ref       = file(params.ref, type: 'file')
 probes    = file(params.probes, type: 'file')
 xhmm_conf = file(params.xhmm_conf, type: 'file')
@@ -26,9 +27,10 @@ process GROUP_BAMS {
     path("bam_group_*"), emit: bam_groups
     
     script:
+    def batch_size = params.xhmm_batch_size as int
     """
-    sort bam_list_unsorted.txt > bam_list_sorted.txt
-    split -l 5 bam_list_sorted.txt --numeric-suffixes=000 --suffix-length=3 --additional-suffix=.list bam_group_
+    sort ${bams} > bam_list_sorted.txt
+    split -l ${batch_size} bam_list_sorted.txt --numeric-suffixes=000 --suffix-length=3 --additional-suffix=.list bam_group_
     """
 }
 

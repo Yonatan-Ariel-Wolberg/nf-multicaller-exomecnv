@@ -269,7 +269,7 @@ process FILTER_CLAMMS_CNVS {
     #!/bin/bash
     set -euo pipefail
     echo "Filtering CNVs..."
-    cat ${cnvs} > Sample_CNVs.bed
+    cat *_CLAMMS_calls.bed > Sample_CNVs.bed
     awk '\$9 >= 500 && \$10 >= 0' Sample_CNVs.bed > Sample_CNVs_filtered.bed || true
     echo "Filtered CNVs saved: Sample_CNVs_filtered.bed"
     """
