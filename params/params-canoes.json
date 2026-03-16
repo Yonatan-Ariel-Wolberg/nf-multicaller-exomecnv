@@ -1,5 +1,5 @@
 {
-    "workflow": "canoes"
+    "workflow": "canoes",
     "ref": "/path/to/reference.fasta",
     "probes": "/path/to/probes.bed",
     "outdir": "./results",
