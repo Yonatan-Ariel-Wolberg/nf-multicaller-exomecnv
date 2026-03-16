@@ -105,7 +105,11 @@ CANOES uses `bedtools multicov` to count reads across all BAMs simultaneously.
 Running a single `multicov` job over thousands of BAMs at once exhausts both
 memory and file-descriptor limits.  The pipeline therefore splits the BAM list
 into fixed-size batches (`canoes_batch_size`) and runs one `multicov` job per
-batch per chromosome; the per-batch matrices are then merged.
+batch per chromosome; the per-batch matrices are then merged into a single
+cohort-wide matrix **before** the CANOES R script performs GC correction and
+PCA normalisation.  The batch size therefore controls **only parallelism and
+memory use**, not normalisation accuracy — every sample contributes to the
+final normalisation regardless of batch size.
 
 - **`canoes_batch_size`** (default `100`; override in params file or via profile):
   - Up to 50 samples → set to `50` (1 batch; minimal overhead).
@@ -115,7 +119,9 @@ batch per chromosome; the per-batch matrices are then merged.
 #### XHMM (`--workflow xhmm`)
 XHMM uses GATK `DepthOfCoverage`, which can require significant memory per job
 when given a large BAM list.  The BAM list is split into fixed-size groups
-(`xhmm_batch_size`) and one `GATK_DOC` job is submitted per group.
+(`xhmm_batch_size`) and one `GATK_DOC` job is submitted per group.  All groups
+are merged by `xhmm --mergeGATKdepths` before PCA normalisation, so the batch
+size controls **only job memory**, not the normalisation cohort.
 
 - **`xhmm_batch_size`** (default `50`; override in params file or via profile):
   - Up to 50 samples → set to `25`–`50` (1–2 batches).
@@ -126,7 +132,9 @@ when given a large BAM list.  The BAM list is split into fixed-size groups
 All CLAMMS steps (depth-of-coverage, normalisation, model training, CNV calling)
 are fully per-sample and run in parallel automatically via Nextflow's data-flow
 model.  No batch-size tuning is needed; `process.maxForks` limits the number of
-concurrent per-sample jobs.
+concurrent per-sample jobs.  The custom reference panel is built from **all**
+normalised coverage files in the cohort, ensuring accurate nearest-neighbour
+normalisation regardless of cohort size.
 
 #### GATK-gCNV (`--workflow gcnv`)
 gCNV trains a cohort-level model and is naturally designed for large cohorts.
@@ -137,10 +145,11 @@ collect all samples at once, increase the memory/CPU limits using the `large`
 profile when running hundreds or thousands of samples.
 
 #### CNVkit (`--workflow cnvkit`)
-CNVkit processes samples independently; concurrency is governed by
-`process.maxForks`.  Use `test_size` (integer) or `test_list` (comma-separated
-sample IDs) in the params file to restrict a run to a subset of samples during
-development.
+CNVkit creates a pooled reference from **all** sample coverages before calling
+CNVs, so every sample contributes to bias correction and GC normalisation.
+Concurrency is governed by `process.maxForks`.  Use `test_size` (integer) or
+`test_list` (comma-separated sample IDs) in the params file to restrict a run
+to a subset of samples during development.
 
 #### DRAGEN / ICAv2 (`--workflow dragen`)
 DRAGEN runs are submitted to the ICAv2 platform.  `maxUploadForks` (default `4`)
@@ -150,6 +159,28 @@ ICA account limits allow it.
 #### SURVIVOR / Truvari (`--workflow survivor` / `--workflow truvari`)
 These consensus modules are fast and lightweight regardless of cohort size; no
 additional tuning is required.
+
+### Minimum cohort sizes for accurate normalisation
+
+Each CNV caller's normalisation method requires a minimum number of samples to
+produce statistically reliable results.  Running with fewer samples than the
+recommended minimum will not cause the pipeline to fail, but CNV call quality
+will be reduced.
+
+| Caller | Normalisation method | Recommended minimum | Notes |
+|--------|---------------------|--------------------:|-------|
+| **CANOES** | GC correction + PCA | 30 | PCA becomes unreliable below ~20 samples; 30+ recommended for typical exome panels |
+| **XHMM** | Mean-centering + PCA | 30 | XHMM's own filters may exclude all targets/samples with very small cohorts; 50+ strongly recommended |
+| **CLAMMS** | Nearest-neighbour reference panel | 30 | Nearest-neighbour selection quality degrades when the reference pool is small |
+| **GATK-gCNV** | Probabilistic cohort model | 30 | The Broad recommends ≥ 30 samples for the COHORT mode model to be well-calibrated |
+| **CNVkit** | Pooled reference (bias correction) | 10 | A pooled reference with as few as 10 samples provides reasonable GC and mappability correction; larger cohorts improve accuracy |
+| **DRAGEN** | Illumina platform normalisation | N/A | Normalisation is handled internally by the DRAGEN pipeline on the ICAv2 platform |
+
+> **Note:** `canoes_batch_size` and `xhmm_batch_size` control how many BAMs are
+> processed per parallel job, not how many samples participate in normalisation.
+> All per-batch results are merged into a single cohort-wide matrix before any
+> normalisation step runs, so these parameters have no effect on normalisation
+> accuracy.
 
 ### Disk and I/O considerations
 - Intermediate files (depth-of-coverage, read-count matrices, normalised
