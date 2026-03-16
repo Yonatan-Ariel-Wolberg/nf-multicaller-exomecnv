@@ -7,7 +7,7 @@ nextflow.enable.dsl=2
 
 // Inspired by a workflow by Reagan Cannell @ https://github.com/SBIMB/ica-elwazi/tree/main/nextflow_workflows/cram_input_dragen_ica_workflow
 
-process uploadCramFiles {
+process UPLOAD_CRAM_FILES {
     debug true
     tag "$sampleId"
     label 'icav2-dragen'
@@ -138,7 +138,7 @@ process uploadCramFiles {
     """
 }
 
-process getStaticFiles {
+process GET_STATIC_FILES {
     debug true
     tag "Validating Static Files"
     label 'icav2-dragen'
@@ -173,7 +173,7 @@ process getStaticFiles {
     """
 }
 
-process checkFileStatus {
+process CHECK_FILE_STATUS {
     debug true
     tag "Checking Status"
     label 'icav2-dragen'
@@ -298,7 +298,7 @@ process checkFileStatus {
     """
 }
 
-process startAnalysisBatch {
+process START_ANALYSIS_BATCH {
     debug true
     tag "Launch Batch Analysis"
     label 'icav2-dragen'
@@ -391,7 +391,7 @@ process startAnalysisBatch {
     """
 }
 
-process checkAnalysisStatus {
+process CHECK_ANALYSIS_STATUS {
     debug true
     tag "Monitor Analysis"
     label 'icav2-dragen'
@@ -444,7 +444,7 @@ process checkAnalysisStatus {
     """
 }
 
-process downloadAnalysisOutput {
+process DOWNLOAD_ANALYSIS_OUTPUT {
     debug true
     tag "Download Output"
     label 'icav2-dragen'
@@ -488,7 +488,7 @@ process downloadAnalysisOutput {
     """
 }
 
-process deleteData {
+process DELETE_DATA {
     debug true
     tag "Cleanup"
     label 'icav2-dragen'
@@ -530,7 +530,7 @@ process deleteData {
     """
 }
 
-process addDragenToolAnnotation {
+process ADD_DRAGEN_TOOL_ANNOTATION {
     debug true
     tag "Add TOOLS=DRAGEN annotation"
     label 'bcftools'
@@ -591,34 +591,34 @@ workflow DRAGEN {
 
     main:
     // Step 1: Upload CRAM and CRAI files to ICA for each sample
-    uploadCramFiles(cram_ch)
+    UPLOAD_CRAM_FILES(cram_ch)
 
     // Step 2: Combine all per-sample upload data into a single file
-    combined_upload_ch = uploadCramFiles.out.dataFile
+    combined_upload_ch = UPLOAD_CRAM_FILES.out.dataFile
         .collectFile(name: 'combined_data.txt')
 
     // Step 3: Append static reference file IDs to the combined data file
-    getStaticFiles(combined_upload_ch)
+    GET_STATIC_FILES(combined_upload_ch)
 
     // Step 4: Verify all uploaded files are available in ICA
-    checkFileStatus(getStaticFiles.out.dataFile)
+    CHECK_FILE_STATUS(GET_STATIC_FILES.out.dataFile)
 
     // Step 5: Launch the DRAGEN batch analysis on ICA
-    startAnalysisBatch(checkFileStatus.out.dataFile)
+    START_ANALYSIS_BATCH(CHECK_FILE_STATUS.out.dataFile)
 
     // Step 6: Monitor the analysis until completion
-    checkAnalysisStatus(startAnalysisBatch.out.dataFile)
+    CHECK_ANALYSIS_STATUS(START_ANALYSIS_BATCH.out.dataFile)
 
     // Step 7: Download the analysis output from ICA
-    downloadAnalysisOutput(checkAnalysisStatus.out.dataFile)
+    DOWNLOAD_ANALYSIS_OUTPUT(CHECK_ANALYSIS_STATUS.out.dataFile)
 
     // Step 8: Clean up temporary CRAM files and output folder from ICA
-    deleteData(downloadAnalysisOutput.out.dataFile)
+    DELETE_DATA(DOWNLOAD_ANALYSIS_OUTPUT.out.dataFile)
 
     // Step 9: Annotate downloaded VCF files with TOOLS=DRAGEN in INFO field
-    addDragenToolAnnotation(downloadAnalysisOutput.out.dataFile)
+    ADD_DRAGEN_TOOL_ANNOTATION(DOWNLOAD_ANALYSIS_OUTPUT.out.dataFile)
 
     emit:
-    result = downloadAnalysisOutput.out.dataFile
-    annotated_vcfs = addDragenToolAnnotation.out.annotated_vcfs
+    result = DOWNLOAD_ANALYSIS_OUTPUT.out.dataFile
+    annotated_vcfs = ADD_DRAGEN_TOOL_ANNOTATION.out.annotated_vcfs
 }

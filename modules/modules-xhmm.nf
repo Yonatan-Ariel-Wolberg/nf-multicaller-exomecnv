@@ -16,7 +16,7 @@ outdir    = file(params.outdir, type: 'dir')
 // =====================================================================================
 // SPLIT BAM FILES TO GROUPS
 // =====================================================================================
-process groupBAMs {
+process GROUP_BAMS {
     tag { 'group_bams' }
 
     input:
@@ -33,7 +33,7 @@ process groupBAMs {
 }
 
 // RUN GATK FOR DEPTH OF COVERAGE (FOR SAMPLES IN EACH GROUP):
-process gatkDOC {
+process GATK_DOC {
     tag { "${group}" }
     label 'gatk'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -68,7 +68,7 @@ process gatkDOC {
 }
 
 // COMBINES GATK DEPTH-OF-COVERAGE OUTPUTS FOR MULTIPLE SAMPLES (AT SAME LOCI):
-process combineDOC {
+process COMBINE_DOC {
     tag { 'combine_doc' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -88,7 +88,7 @@ process combineDOC {
 }
 
 // OPTIONALLY, RUN GATK TO CALCULATE THE PER-TARGET GC CONTENT AND CREATE A LIST OF EXTREME GC CONTENT TARGETS:
-process calcGC_XHMM {
+process CALC_GC_XHMM {
     tag { 'calc_gc' }
     label 'gatk'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -111,7 +111,7 @@ process calcGC_XHMM {
 }
 
 // FILTERS SAMPLES AND TARGETS AND THEN MEAN-CENTERS THE TARGETS:
-process filterSamples {
+process FILTER_SAMPLES {
     tag { 'filter_samples' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true    
@@ -140,7 +140,7 @@ process filterSamples {
 }
 
 // RUNS PCA ON MEAN-CENTERED DATA:
-process runPCA {
+process RUN_PCA {
     tag { 'run_pca' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -158,7 +158,7 @@ process runPCA {
 }
 
 // NORMALIZES MEAN-CENTERED DATA USING PCA INFORMATION:
-process normalisePCA {
+process NORMALISE_PCA {
     tag { 'norm_pca' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -180,7 +180,7 @@ process normalisePCA {
 }
 
 // FILTERS AND Z-SCORE CENTERS (BY SAMPLE) THE PCA-NORMALIZED DATA:
-process filterZScore {
+process FILTER_ZSCORE {
     tag { 'filter_zscore' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -205,7 +205,7 @@ process filterZScore {
 }
 
 // FILTERS ORIGINAL READ-DEPTH DATA TO BE THE SAME AS FILTERED, NORMALIZED DATA:
-process filterRD {
+process FILTER_RD {
     tag { 'filter_rd' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -232,7 +232,7 @@ process filterRD {
 }
 
 // DISCOVERS CNVS IN NORMALIZED DATA:
-process discoverCNVs {
+process DISCOVER_CNVS {
     tag { 'discover_cnvs' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -254,7 +254,7 @@ process discoverCNVs {
 }
 
 // GENOTYPES DISCOVERED CNVS IN ALL SAMPLES:
-process genotypeCNVs {
+process GENOTYPE_CNVS {
     tag { 'genotype_cnvs' }
     label 'xhmm'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -278,7 +278,7 @@ process genotypeCNVs {
 }
 
 // SPLITS COMBINED VCF INTO INDIVIDUAL SAMPLE VCFs
-process splitVCF {
+process SPLIT_VCF {
     tag { 'split_vcf' }
     label 'bcftools'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -301,7 +301,7 @@ process splitVCF {
 }
 
 // FILTERS CNV OUTPUTS USING BCFTOOLS BASED ON EQ, SQ, AND NDQ VALUES
-process filterXHMMCNVs {
+process FILTER_XHMM_CNVS {
     tag { 'filter_cnvs' }
     label 'bcftools'
     publishDir "${outdir}/out_XHMM", mode: 'copy', overwrite: true
@@ -380,64 +380,64 @@ workflow XHMM {
 
     main:
     // Step 1: Group BAMs into batches for parallel depth-of-coverage calculation
-    groupBAMs(bam_list_ch)
+    GROUP_BAMS(bam_list_ch)
 
-    bam_groups_ch = groupBAMs.out.bam_groups
+    bam_groups_ch = GROUP_BAMS.out.bam_groups
         .flatten()
         .map { f -> tuple(f.simpleName, f) }
 
     // Step 2: Calculate depth of coverage per BAM group
-    gatkDOC(bam_groups_ch)
+    GATK_DOC(bam_groups_ch)
 
     // Step 3: Combine all group depth-of-coverage outputs
-    combineDOC(gatkDOC.out.bam_group_doc.map { group, file -> file }.collect())
+    COMBINE_DOC(GATK_DOC.out.bam_group_doc.map { group, file -> file }.collect())
 
     // Step 4: Calculate per-target GC content and identify extreme GC targets
-    calcGC_XHMM()
+    CALC_GC_XHMM()
 
     // Step 5: Filter samples and targets, then mean-center the data
-    filterSamples(combineDOC.out.combined_doc, calcGC_XHMM.out.extreme_gc_targets)
+    FILTER_SAMPLES(COMBINE_DOC.out.combined_doc, CALC_GC_XHMM.out.extreme_gc_targets)
 
     // Step 6: Run PCA on mean-centered data
-    runPCA(filterSamples.out.filtered_centered)
+    RUN_PCA(FILTER_SAMPLES.out.filtered_centered)
 
     // Step 7: Normalize mean-centered data using PCA information
-    normalisePCA(filterSamples.out.filtered_centered, runPCA.out.pca_data)
+    NORMALISE_PCA(FILTER_SAMPLES.out.filtered_centered, RUN_PCA.out.pca_data)
 
     // Step 8: Filter and z-score center the PCA-normalized data
-    filterZScore(normalisePCA.out.data_pca_norm)
+    FILTER_ZSCORE(NORMALISE_PCA.out.data_pca_norm)
 
     // Step 9: Filter original read-depth data to match the normalized filtered data
-    filterRD(
-        combineDOC.out.combined_doc,
-        filterSamples.out.excluded_filtered_targets,
-        filterZScore.out.excluded_zscore_targets,
-        filterSamples.out.excluded_filtered_samples,
-        filterZScore.out.excluded_zscore_samples
+    FILTER_RD(
+        COMBINE_DOC.out.combined_doc,
+        FILTER_SAMPLES.out.excluded_filtered_targets,
+        FILTER_ZSCORE.out.excluded_zscore_targets,
+        FILTER_SAMPLES.out.excluded_filtered_samples,
+        FILTER_ZSCORE.out.excluded_zscore_samples
     )
 
     // Step 10: Discover CNVs in the normalized data
-    discoverCNVs(filterRD.out.orig_filtered, filterZScore.out.pca_norm_zscore)
+    DISCOVER_CNVS(FILTER_RD.out.orig_filtered, FILTER_ZSCORE.out.pca_norm_zscore)
 
     // Step 11: Genotype discovered CNVs across all samples
-    genotypeCNVs(
-        filterRD.out.orig_filtered,
-        filterZScore.out.pca_norm_zscore,
-        discoverCNVs.out.cnvs
+    GENOTYPE_CNVS(
+        FILTER_RD.out.orig_filtered,
+        FILTER_ZSCORE.out.pca_norm_zscore,
+        DISCOVER_CNVS.out.cnvs
     )
 
     // Step 12: Split the combined VCF into per-sample VCFs
-    vcf_ch = genotypeCNVs.out.genotypes
+    vcf_ch = GENOTYPE_CNVS.out.genotypes
         .flatten()
         .filter { it.name == 'DATA.vcf' }
 
-    splitVCF(vcf_ch)
+    SPLIT_VCF(vcf_ch)
 
     // Step 13: Filter per-sample CNV calls by quality scores
-    filterXHMMCNVs(splitVCF.out.individual_vcfs)
+    FILTER_XHMM_CNVS(SPLIT_VCF.out.individual_vcfs)
 
     // Step 14: Compress, sort, index, and annotate each VCF with TOOL=XHMM
-    BGZIP_SORT_INDEX_VCF(filterXHMMCNVs.out.filtered_cnvs.flatten())
+    BGZIP_SORT_INDEX_VCF(FILTER_XHMM_CNVS.out.filtered_cnvs.flatten())
 
     emit:
     sorted_vcf       = BGZIP_SORT_INDEX_VCF.out.sorted_vcf

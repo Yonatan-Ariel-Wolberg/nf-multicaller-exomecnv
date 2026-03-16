@@ -11,7 +11,7 @@ outdir = file(params.outdir, type: 'dir')
 // PROCESSES FOR TRUVARI
 // =====================================================================================
 
-process mergeVCFs {
+process MERGE_VCFS {
     tag "${sample_id}"
     label 'truvari'
     
@@ -66,7 +66,7 @@ process mergeVCFs {
     """
 }
 
-process collapseVCFs {
+process COLLAPSE_VCFS {
     tag "${sample_id}"
     label 'truvari'
     publishDir "${outdir}/out_TRUVARI/${sample_id}", mode: 'copy', overwrite: true
@@ -106,10 +106,10 @@ workflow TRUVARI {
         grouped_vcfs
 
     main:
-        mergeVCFs(grouped_vcfs)
-        collapseVCFs(mergeVCFs.out.merged_data)
+        MERGE_VCFS(grouped_vcfs)
+        COLLAPSE_VCFS(MERGE_VCFS.out.merged_data)
 
     emit:
-        merged_vcf = collapseVCFs.out.merged_vcf
-        collapsed_vcf = collapseVCFs.out.collapsed_vcf
+        merged_vcf = COLLAPSE_VCFS.out.merged_vcf
+        collapsed_vcf = COLLAPSE_VCFS.out.collapsed_vcf
 }

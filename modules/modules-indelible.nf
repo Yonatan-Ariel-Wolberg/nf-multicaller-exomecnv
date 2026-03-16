@@ -12,7 +12,7 @@ indelible_conf    = file(params.indelible_conf, type: 'file')
 outdir            = file(params.outdir, type: 'dir')
 
 // 1. THE FETCH COMMAND EXTRACTS THE READS FROM THE BAM FILE, IT TAKES 2 ARGUMENTS:
-process run_Fetch {
+process RUN_FETCH {
     tag { sample }
     label 'indelible'
     
@@ -31,7 +31,7 @@ process run_Fetch {
 }
 
 // 2. THE AGGREGATE MERGES INFORMATION ACROSS READS TOWARDS A POSITION-LEVEL VIEW OF THE DATA:
-process run_Aggregate {
+process RUN_AGGREGATE {
     tag { sample }
     label 'indelible'
     
@@ -48,7 +48,7 @@ process run_Aggregate {
 }
 
 // 3. THE SCORE COMMAND SCORES POSITIONS BASED ON THE READ INFORMATION AND SEQUENCE CONTEXT:
-process run_Score {
+process RUN_SCORE {
     tag { sample }
     label 'indelible'
     
@@ -66,7 +66,7 @@ process run_Score {
 }
 
 // 4. THE DATABASE COMMAND GENERATES THE ALLELE FREQUENCY AND BREAKPOINT DATABASE REQUIRED FOR THE NEXT STEP – ANNOTATE
-process run_Database {
+process RUN_DATABASE {
     tag { "Indel_DB" }
     label 'indelible'
     cpus 6
@@ -86,7 +86,7 @@ process run_Database {
 }
 
 // 5. THE ANNOTATE COMMAND ENRICHES THE RESULT WITH GENE/EXON ANNOTATIONS AND MERGES THE DATABASE RESULTS WITH THE POSITION FILE:
-process run_Annotate {
+process RUN_ANNOTATE {
     tag { "${score}" }
     label 'indelible'
     publishDir "${outdir}/out_INDELIBLE/annotations", mode: 'copy', overwrite: true
@@ -106,7 +106,7 @@ process run_Annotate {
 
 // 6. ONE CAN THEN LOOK FOR DE NOVO MUTATION EVENTS USING THE DENOVO COMMAND:
 // TRIO
-process run_DenovoTrio {
+process RUN_DENOVO_TRIO {
     tag { sample }
     label 'indelible'
     publishDir "${outdir}/out_INDELIBLE/denovo_annotation_trio", mode: 'copy', overwrite: true
@@ -124,7 +124,7 @@ process run_DenovoTrio {
 }
 
 // MOM
-process run_DenovoMom {
+process RUN_DENOVO_MOM {
     tag { sample }
     label 'indelible'
     publishDir "${outdir}/out_INDELIBLE/denovo_annotation_mom", mode: 'copy', overwrite: true
@@ -142,7 +142,7 @@ process run_DenovoMom {
 }
 
 // DAD
-process run_DenovoDad {
+process RUN_DENOVO_DAD {
     label 'indelible'
     tag { sample }
 
@@ -161,7 +161,7 @@ process run_DenovoDad {
 }
 
 // Filter the results from Indelible
-process filterINDELIBLE {
+process FILTER_INDELIBLE {
     tag { 'filter_cnvs' }
     label 'indelible'
     publishDir "${outdir}/out_INDELIBLE/filtered", mode: 'copy', overwrite: true
@@ -240,35 +240,35 @@ workflow INDELIBLE {
 
     main:
     // Step 1: Extract split/clipped reads from BAM files
-    run_Fetch(crams_ch)
+    RUN_FETCH(crams_ch)
 
     // Step 2: Aggregate read information to a position-level view
-    run_Aggregate(run_Fetch.out.sc_reads)
+    RUN_AGGREGATE(RUN_FETCH.out.sc_reads)
 
     // Step 3: Score positions based on read information and sequence context
-    run_Score(run_Aggregate.out.counts)
+    RUN_SCORE(RUN_AGGREGATE.out.counts)
 
     // Step 4: Generate the allele frequency and breakpoint database
-    run_Database(run_Score.out.database_in.collect())
+    RUN_DATABASE(RUN_SCORE.out.database_in.collect())
 
     // Step 5: Annotate positions with gene/exon information
-    run_Annotate(run_Database.out.indel_database, run_Score.out.scores)
+    RUN_ANNOTATE(RUN_DATABASE.out.indel_database, RUN_SCORE.out.scores)
 
     // Step 6: Identify de novo mutations in complete trios
-    run_DenovoTrio(cram_trios_ch.join(run_Annotate.out.annotated))
+    RUN_DENOVO_TRIO(cram_trios_ch.join(RUN_ANNOTATE.out.annotated))
 
     // Step 7: Identify de novo mutations with mother only
-    run_DenovoMom(cram_mom_ch.join(run_Annotate.out.annotated))
+    RUN_DENOVO_MOM(cram_mom_ch.join(RUN_ANNOTATE.out.annotated))
 
     // Step 8: Identify de novo mutations with father only
-    run_DenovoDad(cram_dad_ch.join(run_Annotate.out.annotated))
+    RUN_DENOVO_DAD(cram_dad_ch.join(RUN_ANNOTATE.out.annotated))
 
     // Step 9: Filter annotated results by confidence thresholds
-    filterINDELIBLE(run_Annotate.out.annotated)
+    FILTER_INDELIBLE(RUN_ANNOTATE.out.annotated)
 
     emit:
-    filtered_cnvs        = filterINDELIBLE.out.filtered_cnvs
-    indelible_denovo     = run_DenovoTrio.out.indelible_denovo
-    indelible_denovo_mom = run_DenovoMom.out.indelible_denovo_mom
-    indelible_denovo_dad = run_DenovoDad.out.indelible_denovo_dad
+    filtered_cnvs        = FILTER_INDELIBLE.out.filtered_cnvs
+    indelible_denovo     = RUN_DENOVO_TRIO.out.indelible_denovo
+    indelible_denovo_mom = RUN_DENOVO_MOM.out.indelible_denovo_mom
+    indelible_denovo_dad = RUN_DENOVO_DAD.out.indelible_denovo_dad
 }
