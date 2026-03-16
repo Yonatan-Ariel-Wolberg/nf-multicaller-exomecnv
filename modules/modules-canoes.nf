@@ -6,9 +6,10 @@ nextflow.enable.dsl=2
 // ================================================================================
 
 // Define parameters for the workflow
-params.ref    = ''
-params.probes = ''
-params.outdir = 'results'
+params.ref               = ''
+params.probes            = ''
+params.outdir            = 'results'
+params.canoes_batch_size = 200  // BAMs per bedtools multicov job; reduce if hitting memory limits
 
 ref    = file(params.ref, type: 'file')
 probes = file(params.probes, type: 'file')
@@ -48,35 +49,90 @@ process CALC_GC_CANOES {
     """
 }
 
-// Process to generate read counts using Bedtools
-process GEN_READ_COUNTS {
-    tag { "${chr}" }
+// Process to split the BAM list into fixed-size batches for parallel bedtools runs
+process BATCH_BAMS {
+    tag { 'batch_bams' }
     label 'bedtools'
-    publishDir "${outdir}/out_CANOES/${chr}", mode: 'copy', overwrite: true
-    
+
     input:
     path(bam_list)
+
+    output:
+    path("bam_batch_*.list"), emit: bam_batches
+
+    script:
+    def batch_size = params.canoes_batch_size as int
+    """
+    sort ${bam_list} | split -l ${batch_size} \\
+        --numeric-suffixes=000 --suffix-length=3 --additional-suffix=.list - bam_batch_
+    """
+}
+
+// Process to generate read counts for one BAM batch per chromosome
+process GEN_READ_COUNTS {
+    tag { "${chr}_${batch_id}" }
+    label 'bedtools'
+
+    input:
+    tuple val(batch_id), path(batch_list)
     each chr
 
     output:
-    tuple val("${chr}"), path("${chr}_canoes_reads.txt"), path("${chr}_sample_list"), emit: chr_reads_cov
-    
+    tuple val("${chr}"), path("${chr}_${batch_id}_canoes_reads.txt"), path("${chr}_${batch_id}_sample_list"), emit: chr_reads_cov
+
     script:
     """
-    ## CREATE A SORTED LIST OF BAM FILES FOR BEDTOOLS
-    sort ${bam_list} > bam_list_sorted.txt
-
-    ## SUBSET THE PROBES FOR A PARTICULAR CHROMOSOME
+    ## SUBSET THE PROBES FOR THIS CHROMOSOME
     grep ^"${chr}	" ${probes} > ${chr}_probes_sanger.bed
 
-    ## CREATE SAMPLE LIST FILE FOR CANOES IN R
+    ## CREATE SAMPLE LIST FOR THIS BATCH
     while read line
     do
-        echo `basename \$line` | sed 's/.bam//'
-    done < bam_list_sorted.txt > ${chr}_sample_list
+        echo \$(basename \$line) | sed 's/\\.bam\$//'
+    done < ${batch_list} > ${chr}_${batch_id}_sample_list
 
-    ## RUN BEDTOOLS FOR THE CHROMOSOME
-    bedtools multicov -bams `cat bam_list_sorted.txt` -bed ${chr}_probes_sanger.bed -q 20 > ${chr}_canoes_reads.txt
+    ## RUN BEDTOOLS FOR THIS BATCH
+    mapfile -t bams < ${batch_list}
+    bedtools multicov -bams "\${bams[@]}" -bed ${chr}_probes_sanger.bed -q 20 > ${chr}_${batch_id}_canoes_reads.txt
+    """
+}
+
+// Process to merge per-batch read count matrices into a single per-chromosome matrix
+process MERGE_READ_COUNTS {
+    tag { "${chr}" }
+    label 'bedtools'
+    publishDir "${outdir}/out_CANOES/${chr}", mode: 'copy', overwrite: true
+
+    input:
+    tuple val(chr), path(reads_files), path(sample_lists)
+
+    output:
+    tuple val(chr), path("${chr}_canoes_reads.txt"), path("${chr}_sample_list"), emit: chr_reads_cov
+
+    script:
+    """
+    ## Sort batch files to ensure consistent column ordering across batches
+    ls ${chr}_*_canoes_reads.txt | sort > reads_order.txt
+    ls ${chr}_*_sample_list      | sort > slist_order.txt
+
+    ## Concatenate sample lists in batch order
+    while read f; do
+        cat "\$f"
+    done < slist_order.txt > ${chr}_sample_list
+
+    ## Extract genomic coordinate columns (1-3) from the first batch
+    first_reads=\$(head -1 reads_order.txt)
+    cut -f1-3 "\$first_reads" > coords.txt
+
+    ## Extract count columns (col 4+) from every batch, then paste side-by-side
+    i=0
+    while read f; do
+        cut -f4- "\$f" > "counts_\${i}.tmp"
+        i=\$((i + 1))
+    done < reads_order.txt
+
+    paste coords.txt counts_*.tmp > ${chr}_canoes_reads.txt
+    rm -f coords.txt counts_*.tmp reads_order.txt slist_order.txt
     """
 }
 
@@ -216,24 +272,36 @@ workflow CANOES {
     // Step 1: Calculate GC content per chromosome
     CALC_GC_CANOES(chroms_ch)
 
-    // Step 2: Generate per-chromosome read counts
-    GEN_READ_COUNTS(bam_list_ch, chroms_ch)
+    // Step 2: Split the BAM list into batches to limit per-job BAM count
+    BATCH_BAMS(bam_list_ch)
+    bam_batches_ch = BATCH_BAMS.out.bam_batches
+        .flatten()
+        .map { f -> tuple(f.simpleName, f) }  // (batch_id e.g. "bam_batch_000", batch_file)
 
-    // Step 3: Join read-counts and GC content by chromosome, then run CANOES
-    canoes_input_ch = GEN_READ_COUNTS.out.chr_reads_cov
+    // Step 3: Generate read counts per batch per chromosome
+    GEN_READ_COUNTS(bam_batches_ch, chroms_ch)
+
+    // Step 4: Merge per-batch count matrices by chromosome
+    merged_reads_ch = GEN_READ_COUNTS.out.chr_reads_cov
+        .groupTuple(by: 0)  // group by chr: (chr, [reads_files...], [sample_lists...])
+
+    MERGE_READ_COUNTS(merged_reads_ch)
+
+    // Step 5: Join merged read-counts and GC content by chromosome, then run CANOES
+    canoes_input_ch = MERGE_READ_COUNTS.out.chr_reads_cov
         .join(CALC_GC_CANOES.out.chr_gc_content, by: 0)
 
     RUN_CANOES(canoes_input_ch)
 
-    // Step 4: Collect all per-chromosome pass-CNV files and filter
+    // Step 6: Collect all per-chromosome pass-CNV files and filter
     all_cnvs_ch = RUN_CANOES.out.chr_cnvs_pass
         .map { chr, cnv_file -> cnv_file }
         .collect()
 
     FILTER_CANOES_CNVS(all_cnvs_ch)
 
-    // Step 5: Reuse sample list from the first GEN_READ_COUNTS output
-    sample_list_ch = GEN_READ_COUNTS.out.chr_reads_cov
+    // Step 7: Reuse sample list from the first MERGE_READ_COUNTS output
+    sample_list_ch = MERGE_READ_COUNTS.out.chr_reads_cov
         .first()
         .map { chr, reads, sample_list -> sample_list }
 
@@ -243,7 +311,7 @@ workflow CANOES {
         fai_ch
     )
 
-    // Step 6: Compress, sort, index, and annotate each VCF with TOOL=CANOES
+    // Step 8: Compress, sort, index, and annotate each VCF with TOOL=CANOES
     BGZIP_SORT_INDEX_VCF(CONVERT_CANOES_TO_VCF.out.vcfs)
 
     emit:
