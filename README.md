@@ -43,9 +43,26 @@ Built with Nextflow for reproducible, scalable, and portable data analysis.
 
 ## Requirements
 
+### Operating System
+- **Linux** or **Unix** (macOS, HPC clusters running Linux)
+  > Windows is **not** supported. Use WSL2 or a remote Linux server if you are on Windows.
+
 ### Software
-- **Nextflow**: >= 20.04
-- **Java**: >= 8
+- **Apptainer** (formerly Singularity): >= 1.0  
+  All tool containers are pulled and executed via Apptainer. Install it following the [official guide](https://apptainer.org/docs/admin/main/installation.html).
+- **Nextflow**: >= 20.04  
+  Install with:
+  ```bash
+  curl -s https://get.nextflow.io | bash
+  ```
+- **Java**: >= 8 (required by Nextflow)  
+  Install OpenJDK:
+  - Debian/Ubuntu: `sudo apt install default-jdk`
+  - RHEL/CentOS/Rocky: `sudo yum install java-1.8.0-openjdk`
+  - macOS (Homebrew): `brew install openjdk`
+
+### Libraries and Dependencies
+All bioinformatics tools (CANOES, CLAMMS, XHMM, GATK, CNVkit, InDelible, ICAv2 CLI, SURVIVOR, Truvari, bcftools, bedtools, Picard) are provided as pre-built container images and are downloaded automatically by Apptainer at runtime. No manual tool installation is required beyond Apptainer and Nextflow themselves.
 
 ### Computing Resources
 - Adequate CPU cores (parallel execution recommended)
@@ -123,6 +140,64 @@ All required and optional parameters for each workflow are documented in the cor
 | `params/params-indelible.json` | `--workflow indelible` |
 | `params/params-survivor.json` | `--workflow survivor` |
 | `params/params-truvari.json` | `--workflow truvari` |
+
+## Running on the Wits UI Cluster
+
+The workflow has been tested on the **University of the Witwatersrand (Wits) UI HPC cluster**, which runs **Linux** and uses **SLURM** as its job scheduler.  Use the `wits` profile to activate the cluster-specific settings.
+
+### Quick start on the Wits cluster
+
+```bash
+# Load the required modules (adjust module names to match the cluster's module system)
+module load nextflow
+module load apptainer   # or: module load singularity
+
+# Run a workflow — replace <workflow> and the params file as needed
+nextflow run main.nf \
+    -profile wits,medium \
+    --workflow canoes \
+    -params-file params/params-canoes.json
+```
+
+### What the `wits` profile does
+
+| Setting | Value |
+|---|---|
+| `executor` | `slurm` |
+| `process.queue` | `batch` |
+| `process.cpus` | 4 |
+| `process.memory` | 16 GB |
+| `process.time` | 72 h |
+| `executor.queueSize` | 500 |
+| `executor.submitRateLimit` | 10/sec |
+
+### Cluster-specific bind mounts
+
+The global `singularity.runOptions` in `nextflow.config` binds several Wits file-system paths into every container:
+
+```
+-B /dataB/aux
+-B /dataG/ddd
+-B /dataG/ddd-2023
+-B /home/ywolberg
+```
+
+Edit `params.runOptions` in `nextflow.config` (or pass `--runOptions` on the command line) if your data lives elsewhere on the cluster.
+
+### GATK / Picard constraint
+
+GATK and Picard processes request nodes with AVX2 support (`--constraint=avx2`) and exclude node `n04` (`--exclude=n04`).  Adjust `process.clusterOptions` in `nextflow.config` if the Wits cluster topology changes.
+
+### ICAv2 / DRAGEN on the Wits cluster
+
+The DRAGEN workflow submits runs to the ICAv2 cloud platform from a local container.  Before running `--workflow dragen`:
+
+1. Build the ICAv2 CLI container (if not already done):
+   ```bash
+   apptainer build icav2_cli_v2.43.0.sif icav2.def
+   ```
+2. Update the container path in `nextflow.config` (`withLabel: 'icav2-dragen'`) to the location where you stored the `.sif` file.
+3. Ensure your ICA credentials are present at `~/.icav2/` on the cluster head node so they can be bind-mounted into the container.
 
 ## Scalability: running 50, 300, or 2000 samples
 
