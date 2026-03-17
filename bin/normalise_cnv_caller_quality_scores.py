@@ -40,10 +40,12 @@ def standardize_cnv_qual(input_vcf, output_vcf, caller):
                     metric_used = "Q_SOME"
 
             elif caller == "CLAMMS":
-                # Q_SOME is a FORMAT field in CLAMMS VCFs
-                if sample is not None and "Q_SOME" in sample:
+                # Q_SOME and Q_EXACT are FORMAT fields in CLAMMS VCFs
+                if sample is not None and "Q_SOME" in sample and "Q_EXACT" in sample:
+                    q_exact = float(sample["Q_EXACT"])
                     q_some = float(sample["Q_SOME"])
-                    qual_norm = min(1000.0, universal_baseline * (q_some / 500.0))
+                    if q_exact >= 0.0:
+                        qual_norm = min(1000.0, universal_baseline * (q_some / 500.0))
                     metric_used = "Q_SOME"
 
             elif caller == "XHMM":
@@ -89,12 +91,16 @@ def standardize_cnv_qual(input_vcf, output_vcf, caller):
                     metric_used = "QUAL"
 
             elif caller == "INDELIBLE":
-                # SR_TOTAL and AVG_MAPQ are INFO fields in INDELIBLE VCFs (uppercase)
+                # SR_TOTAL and AVG_MAPQ are INFO fields in INDELIBLE VCFs (uppercase).
+                # MUM_SR and DAD_SR are optional de-novo INFO fields; default to 0
+                # when the TSV pre-dates the de-novo analysis step.
                 if "SR_TOTAL" in record.info and "AVG_MAPQ" in record.info:
                     sr_total = float(record.info["SR_TOTAL"])
                     avg_mapq = float(record.info["AVG_MAPQ"])
+                    mum_sr = float(record.info["MUM_SR"]) if "MUM_SR" in record.info else 0.0
+                    dad_sr = float(record.info["DAD_SR"]) if "DAD_SR" in record.info else 0.0
 
-                    if sr_total >= 5.0 and avg_mapq >= 20.0:
+                    if sr_total >= 5.0 and avg_mapq >= 20.0 and mum_sr < 2.0 and dad_sr < 2.0:
                         synthetic_score = sr_total * (avg_mapq / 60.0) * 100.0
                         qual_norm = min(1000.0, universal_baseline * (synthetic_score / 16.67))
                         metric_used = "SYNTHETIC_PHRED"

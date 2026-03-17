@@ -193,22 +193,24 @@ class TestCallerFieldCorrectness:
         )
 
     def test_clamms_reads_from_format_not_info(self, script_text):
-        """CLAMMS stores Q_SOME in FORMAT, not INFO; Q_EXACT is not in the VCF."""
+        """CLAMMS stores Q_SOME and Q_EXACT in FORMAT, not INFO."""
         clamms_block = re.search(
             r'elif caller == "CLAMMS":(.+?)(?=elif caller|$)',
             script_text, re.DOTALL
         )
         assert clamms_block, "CLAMMS caller block not found"
         block = clamms_block.group(1)
+        # Must use sample["Q_SOME"] and sample["Q_EXACT"] (FORMAT), not record.info
         assert 'record.info' not in block, (
-            "CLAMMS block must not access quality fields via record.info; "
-            "Q_SOME is a FORMAT field in CLAMMS VCFs"
-        )
-        assert '"Q_EXACT"' not in block, (
-            "Q_EXACT is not present in CLAMMS VCFs; the block must not require it"
+            "CLAMMS block must not access Q_SOME/Q_EXACT via record.info; "
+            "they are FORMAT fields in CLAMMS VCFs"
         )
         assert 'sample' in block and '"Q_SOME"' in block, (
             "CLAMMS block must read Q_SOME from sample FORMAT fields"
+        )
+        assert '"Q_EXACT"' in block, (
+            "CLAMMS block must read Q_EXACT from sample FORMAT fields "
+            "to gate the normalisation: Q_EXACT < 0 → QUAL_norm = 0"
         )
 
     def test_indelible_uses_uppercase_info_fields(self, script_text):
@@ -232,17 +234,19 @@ class TestCallerFieldCorrectness:
             "INDELIBLE block must not use lowercase 'avg_mapq' (field is uppercase)"
         )
 
-    def test_indelible_does_not_require_mum_dad_sr(self, script_text):
-        """mum_sr / dad_sr are de novo fields not present in standard INDELIBLE VCFs."""
+    def test_indelible_applies_mum_dad_sr_gates(self, script_text):
+        """INDELIBLE block must check mum_sr < 2 and dad_sr < 2 as de-novo quality gates."""
         indelible_block = re.search(
             r'elif caller == "INDELIBLE":(.+?)(?=except|$)',
             script_text, re.DOTALL
         )
         assert indelible_block, "INDELIBLE caller block not found"
         block = indelible_block.group(1)
-        assert '"mum_sr"' not in block and '"dad_sr"' not in block, (
-            "INDELIBLE block must not require mum_sr / dad_sr which are not "
-            "present in standard INDELIBLE VCF output"
+        assert '"MUM_SR"' in block or 'mum_sr' in block, (
+            "INDELIBLE block must check MUM_SR: if mum_sr >= 2.0 → QUAL_norm = 0.0"
+        )
+        assert '"DAD_SR"' in block or 'dad_sr' in block, (
+            "INDELIBLE block must check DAD_SR: if dad_sr >= 2.0 → QUAL_norm = 0.0"
         )
 
     def test_sample_accessor_uses_first_value(self, script_text):

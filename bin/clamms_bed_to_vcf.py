@@ -203,6 +203,7 @@ def write_vcf_header(vcf_file, fai_file, individual_sample):
     vcf_file.write("##INFO=<ID=STRANDS,Number=1,Type=String,Description=\"Strand direction\">\n")
     vcf_file.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n")
     vcf_file.write("##FORMAT=<ID=Q_SOME,Number=1,Type=Float,Description=\"Quality score of the CNV event\">\n")
+    vcf_file.write("##FORMAT=<ID=Q_EXACT,Number=1,Type=Float,Description=\"Exact boundary quality score of the CNV event\">\n")
 
     vcf_file.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t" + individual_sample + "\n")
 
@@ -242,10 +243,10 @@ def write_vcf_mutations(vcf_file, input_file, sample_file, individual_sample, lo
         info = f"END={end};SVLEN={svlen};SVTYPE=CNV;TOOL={svmethod};STRANDS={strand}"
 
         filter_status = 'PASS' if q_some >= 500 and q_exact >= 0 else 'LowQuality'
-        format_field = "GT:Q_SOME"
+        format_field = "GT:Q_SOME:Q_EXACT"
         chrom_formatted = f"chr{chr_num}" if not str(chr_num).startswith("chr") else chr_num
 
-        vcf_file.write(f"{chrom_formatted}\t{start}\t.\t{ref}\t{alt}\t.\t{filter_status}\t{info}\t{format_field}\t./.:{q_some}\n")
+        vcf_file.write(f"{chrom_formatted}\t{start}\t.\t{ref}\t{alt}\t.\t{filter_status}\t{info}\t{format_field}\t./.:{q_some}:{q_exact}\n")
 
 
 def process_clamms_data(input_file, sample_file, fai_file, output_dir, log_file=None):
