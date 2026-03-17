@@ -41,9 +41,9 @@ process GENERATE_WINDOWS {
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Generating windows..."
-    annotate_windows.sh ${ref} ${probes} ${mappability} ${special_reg} windows.bed
-    echo "Finished generating windows: windows.bed"
+    export INSERT_SIZE=200
+    sort -k1,1 -k2,2n ${probes} > targets_sorted.bed
+    \$CLAMMS_DIR/annotate_windows.sh targets_sorted.bed ${ref} ${mappability} \$INSERT_SIZE ${special_reg} > windows.bed
     """
 }
 
@@ -63,9 +63,7 @@ process SAMTOOLS_DOC {
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Calculating depth of coverage for ${sample_id}..."
-    samtools bedcov ${windows} ${bam} > ${sample_id}.coverage.bed
-    echo "Coverage file created for ${sample_id}: ${sample_id}.coverage.bed"
+    samtools bedcov -Q 30 ${windows} ${bam} | awk '{ printf "%s\\t%d\\t%d\\t%.6g\\n", \$1, \$2, \$3, \$NF/(\$3-\$2); }' > ${sample_id}.coverage.bed
     """
 }
 
@@ -79,15 +77,13 @@ process NORMALIZE_DOC {
     path windows
 
     output:
-    tuple val(sample_id), path("${sample_id}.norm.coverage.bed"), emit: norm_coverage
+    tuple val(sample_id), path("${sample_id}.norm.cov.bed"), emit: norm_coverage
     
     script:
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Normalizing depth of coverage for ${sample_id}..."
-    normalize_coverage ${coverage} ${windows} > ${sample_id}.norm.coverage.bed
-    echo "Normalized coverage file created for ${sample_id}: ${sample_id}.norm.coverage.bed"
+    \$CLAMMS_DIR/normalize_coverage ${coverage} ${windows} | sed 's/^chr//g' > ${sample_id}.norm.cov.bed
     """
 }
 
@@ -100,16 +96,13 @@ process CREATE_PCA_DATA {
     path norm_covs
 
     output:
-    path "pca_data.txt", emit: pca_data
+    path "pca.coordinates.txt", emit: pca_data
     
     script:
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Creating PCA data..."
-    ls *.norm.coverage.bed > norm_covs.list
-    echo "PCA matrix placeholder" > pca_data.txt
-    echo "PCA data created: pca_data.txt"
+    custom_ref_panel.sh
     """
 }
 
@@ -166,29 +159,26 @@ process GET_PICARD_MEAN_INSERT_SIZE {
 // Process to combine all QC metrics from Picard
 process COMBINE_PICARD_QC_METRICS {
     tag "Combine_QC"
-    label 'clamms|bedtools'
+    label 'picard'
 
     input:
     path metrics
 
     output:
-    path "combined_qc_metrics.txt", emit: qcs_metrics
+    path "qcs_metrics", emit: qcs_metrics
     
     script:
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Combining QC metrics..."
     combine_picard_qc_metrics.sh
-    mv qcs_metrics combined_qc_metrics.txt
-    echo "Combined QC metrics saved to: combined_qc_metrics.txt"
     """
 }
 
 // Process to create a custom reference panel
 process CREATE_CUSTOM_REF_PANEL {
     tag "Ref_Panel"
-    label 'clamms|bedtools'
+    label 'R'
 
     input:
     path norm_covs
@@ -196,15 +186,14 @@ process CREATE_CUSTOM_REF_PANEL {
     path combined_qc
     
     output:
-    path "*.ref.panel.files", emit: ref_panel
+    path "*.pdf", emit: plots
+    path "*.ref.panel.files.txt", emit: ref_panel
     
     script:
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Creating custom reference panel..."
-    custom_ref_panel.sh ${combined_qc} ${pca_data}
-    echo "Custom reference panel created."
+    custom_ref_panel.R ${pca_data} ${combined_qc} ${sexinfo}
     """
 }
 
@@ -225,9 +214,8 @@ process TRAIN_MODELS {
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Training models for ${sample_id}..."
-    fit_models ${windows} ${ref_panel_file} > ${sample_id}.models.bed
-    echo "Models trained for ${sample_id}: ${sample_id}.models.bed"
+    sed 's/chr//g' ${windows} > windows.new.bed
+    \$CLAMMS_DIR/fit_models ${ref_panel_file} windows.new.bed > ${sample_id}.models.bed
     """
 }
 
@@ -241,15 +229,15 @@ process CALL_CNVS {
     tuple val(sample_id), path(sample_models), path(norm_cov)
 
     output:
-    tuple val(sample_id), path("${sample_id}_CLAMMS_calls.bed"), emit: cnvs
+    tuple val(sample_id), path("${sample_id}.cnv.bed"), emit: cnvs
     
     script:
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Calling CNVs for ${sample_id}..."
-    call_cnv ${sample_models} ${norm_cov} > ${sample_id}_CLAMMS_calls.bed
-    echo "CNVs called for ${sample_id}: ${sample_id}_CLAMMS_calls.bed"
+    sex=\$(grep "^${sample_id}\t" ${sexinfo} | cut -f 2)
+    if [ -z "\$sex" ]; then echo "Error: Sample ${sample_id} not found in ${sexinfo}" >&2; exit 1; fi
+    \$CLAMMS_DIR/call_cnv ${norm_cov} ${sample_models} --sex \$sex > ${sample_id}.cnv.bed
     """
 }
 
@@ -263,16 +251,14 @@ process FILTER_CLAMMS_CNVS {
     path cnvs
 
     output:
-    path "Sample_CNVs_filtered.bed", emit: filtered_cnvs
+    tuple path("samples.cnv.bed"), path("samples.cnv.filtered.bed"), emit: filtered_cnvs
     
     script:
     """
     #!/bin/bash
     set -euo pipefail
-    echo "Filtering CNVs..."
-    cat *_CLAMMS_calls.bed > Sample_CNVs.bed
-    awk '\$9 >= 500 && \$10 >= 0' Sample_CNVs.bed > Sample_CNVs_filtered.bed || true
-    echo "Filtered CNVs saved: Sample_CNVs_filtered.bed"
+    cat *.cnv.bed > samples.cnv.bed
+    awk '{ if( (\$9>=500) && (\$10>0) ) { print } }' samples.cnv.bed > samples.cnv.filtered.bed
     """
 }
 
@@ -392,7 +378,7 @@ workflow CLAMMS {
     // Step 8: Train models per sample using its reference panel file
     ref_panel_per_sample_ch = CREATE_CUSTOM_REF_PANEL.out.ref_panel
         .flatten()
-        .map { file -> tuple(file.name.replace('.ref.panel.files', ''), file) }
+        .map { file -> tuple(file.name.replace('.ref.panel.files.txt', ''), file) }
 
     TRAIN_MODELS(
         ref_panel_per_sample_ch,
@@ -411,7 +397,7 @@ workflow CLAMMS {
 
     // Step 11: Convert filtered BED to VCF
     CONVERT_CLAMMS_TO_VCF(
-        FILTER_CLAMMS_CNVS.out.filtered_cnvs,
+        FILTER_CLAMMS_CNVS.out.filtered_cnvs.map { all_cnv, filtered_cnv -> filtered_cnv },
         sample_file_ch,
         fai_ch
     )
