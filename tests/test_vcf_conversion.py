@@ -66,12 +66,20 @@ def _read_vcf_records(vcf_path):
 
 @pytest.fixture()
 def canoes_csv(tmp_path):
-    """Minimal CANOES CSV with one call per sample."""
+    """Minimal CANOES TSV with one call per sample.
+
+    Uses the actual tab-separated output format produced by run_canoes.R /
+    CANOES.R (write.table with sep='\t'), with the column order that
+    PrintCNVs / CalcCopyNumber generates:
+      SAMPLE, CNV, INTERVAL, KB, CHR, MID_BP, TARGETS, NUM_TARG, MLCN, Q_SOME
+    INTERVAL uses integer chromosome numbers (no 'chr' prefix) because
+    RUN_CANOES strips the prefix with sed before invoking the R script.
+    """
     csv = tmp_path / "canoes.csv"
     csv.write_text(
-        "CNV,INTERVAL,KB,CHR,MID_BP,TARGETS,NUM_TARG,SAMPLE,MLCN,Q_SOME\n"
-        "DEL,chr1:1000-2000,1.0,1,1500,GENE1:1000-2000,2,SAMPLE1,1,90.5\n"
-        "DUP,chr2:5000-8000,3.0,2,6500,GENE2:5000-8000,3,SAMPLE2,3,75.2\n"
+        "SAMPLE\tCNV\tINTERVAL\tKB\tCHR\tMID_BP\tTARGETS\tNUM_TARG\tMLCN\tQ_SOME\n"
+        "SAMPLE1\tDEL\t1:1000-2000\t1.0\t1\t1500\t1..2\t2\t1\t90.5\n"
+        "SAMPLE2\tDUP\t2:5000-8000\t3.0\t2\t6500\t3..5\t3\t3\t75.2\n"
     )
     return str(csv)
 
@@ -172,6 +180,28 @@ class TestCanoesCSVtoVCF:
         header, _ = _read_vcf_records(os.path.join(out, "SAMPLE1_CANOES_output.vcf"))
         contig_lines = [l for l in header if l.startswith("##contig=")]
         assert contig_lines, "No ##contig= lines found in VCF header"
+
+    def test_chrom_field_has_chr_prefix(self, canoes_csv, sample_file, fai_file, tmp_path):
+        """CHROM column in every data record has the 'chr' prefix.
+
+        CANOES.R outputs integer chromosome numbers (1, 2, …) because
+        RUN_CANOES strips the prefix with sed before invoking R.
+        The converter must re-add 'chr' so that the VCF is compliant with
+        the GRCh3x reference naming convention.
+        """
+        import canoes_csv_to_vcf as mod
+
+        out = str(tmp_path / "out")
+        mod.process_canoes_data(canoes_csv, sample_file, fai_file, out)
+
+        for fname in ("SAMPLE1_CANOES_output.vcf", "SAMPLE2_CANOES_output.vcf"):
+            _, data = _read_vcf_records(os.path.join(out, fname))
+            assert data, f"{fname} contains no data records"
+            for record in data:
+                chrom = record.split("\t")[0]
+                assert chrom.startswith("chr"), (
+                    f"CHROM field does not start with 'chr' in {fname}: got '{chrom}'"
+                )
 
 
 # ===========================================================================
