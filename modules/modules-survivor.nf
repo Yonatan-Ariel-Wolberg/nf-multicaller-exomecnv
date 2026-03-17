@@ -21,7 +21,8 @@ process RUN_SURVIVOR_MERGE {
     tuple val(sample_id), path(vcfs)
 
     output:
-    tuple val(sample_id), path("${sample_id}_survivor_merged.vcf"), emit: merged_vcf
+    tuple val(sample_id), path("${sample_id}_survivor_union.vcf"),        emit: union_vcf
+    tuple val(sample_id), path("${sample_id}_survivor_intersection.vcf"), emit: intersection_vcf
 
     script:
     """
@@ -40,8 +41,10 @@ process RUN_SURVIVOR_MERGE {
         fi
     done
 
-    # Run SURVIVOR merge with the specified parameters
     # Args: list max_dist min_support use_type use_strand est_dist min_sv_size output
+    # use_strand=0: CNV callers do not produce strand information
+
+    # Union merge: report SVs supported by at least 1 caller
     SURVIVOR merge \\
         \$list_file \\
         1000 \\
@@ -50,7 +53,18 @@ process RUN_SURVIVOR_MERGE {
         0 \\
         0 \\
         30 \\
-        "${sample_id}_survivor_merged.vcf"
+        "${sample_id}_survivor_union.vcf"
+
+    # Intersection merge: report SVs supported by at least 2 callers
+    SURVIVOR merge \\
+        \$list_file \\
+        1000 \\
+        2 \\
+        1 \\
+        0 \\
+        0 \\
+        30 \\
+        "${sample_id}_survivor_intersection.vcf"
     """
 }
 
@@ -66,5 +80,6 @@ workflow SURVIVOR {
         RUN_SURVIVOR_MERGE(grouped_vcfs)
 
     emit:
-        merged_vcf = RUN_SURVIVOR_MERGE.out.merged_vcf
+        union_vcf        = RUN_SURVIVOR_MERGE.out.union_vcf
+        intersection_vcf = RUN_SURVIVOR_MERGE.out.intersection_vcf
 }
