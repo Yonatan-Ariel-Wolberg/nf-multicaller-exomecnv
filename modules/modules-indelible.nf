@@ -201,7 +201,10 @@ process CONVERT_INDELIBLE_TO_VCF {
     """
 }
 
-// Process to compress, sort, index, and annotate each INDELIBLE VCF with TOOL=INDELIBLE
+// Process to compress, sort and index each INDELIBLE VCF.
+// TOOL=INDELIBLE is already written into the INFO field by CONVERT_INDELIBLE_TO_VCF,
+// so no additional bcftools-annotate step is needed here.  A second attempt to add
+// the same ##INFO header would produce a non-standard duplicate header line.
 process BGZIP_SORT_INDEX_VCF {
     tag "${vcf_file.simpleName}"
     label 'bcftools'
@@ -218,35 +221,8 @@ process BGZIP_SORT_INDEX_VCF {
     def sample_name = vcf_file.simpleName
     def sorted_gz   = "${sample_name}.sorted.vcf.gz"
     """
-    # Create extra header line for the TOOL INFO field
-    printf '##INFO=<ID=TOOL,Number=1,Type=String,Description="Calling tool">\\n' > extra_header.txt
-
-    # Build a BED annotation file with TOOL=INDELIBLE for every variant
-    bcftools query -f '%CHROM\\t%POS0\\t%END\\n' ${vcf_file} | \\
-        awk 'BEGIN{OFS="\\t"} {print \$1, \$2, \$3, "INDELIBLE"}' | \\
-        bgzip -c > ${sample_name}_tool_annot.bed.gz
-    tabix -p bed ${sample_name}_tool_annot.bed.gz
-
-    # Annotate the VCF with TOOL=INDELIBLE in the INFO field
-    bcftools annotate \\
-        -a ${sample_name}_tool_annot.bed.gz \\
-        -c CHROM,FROM,TO,INFO/TOOL \\
-        -h extra_header.txt \\
-        ${vcf_file} \\
-        -O v -o ${sample_name}_annotated.vcf
-
-    # Compress the annotated VCF with bgzip
-    bgzip -c ${sample_name}_annotated.vcf > ${sample_name}_annotated.vcf.gz
-
-    # Sort the compressed VCF
-    bcftools sort ${sample_name}_annotated.vcf.gz -o ${sorted_gz} -O z
-
-    # Index the sorted VCF
+    bcftools sort ${vcf_file} -o ${sorted_gz} -O z
     tabix -p vcf ${sorted_gz}
-
-    # Remove intermediate files
-    rm -f ${sample_name}_tool_annot.bed.gz ${sample_name}_tool_annot.bed.gz.tbi \\
-          ${sample_name}_annotated.vcf ${sample_name}_annotated.vcf.gz
     """
 }
 
@@ -275,7 +251,12 @@ workflow INDELIBLE {
     RUN_DATABASE(RUN_SCORE.out.database_in.collect())
 
     // Step 5: Annotate positions with gene/exon information
-    RUN_ANNOTATE(RUN_DATABASE.out.indel_database, RUN_SCORE.out.scores)
+    // Use .first() to convert the single-item database queue channel into a
+    // value channel that broadcasts to every scored-file in the scores channel.
+    // Without .first(), Nextflow's default zip behaviour would pair the single
+    // database with only the FIRST scored file, leaving all other samples
+    // un-annotated.
+    RUN_ANNOTATE(RUN_DATABASE.out.indel_database.first(), RUN_SCORE.out.scores)
 
     // Step 6: Identify de novo mutations in complete trios
     RUN_DENOVO_TRIO(cram_trios_ch.join(RUN_ANNOTATE.out.annotated))
@@ -292,7 +273,7 @@ workflow INDELIBLE {
     // Step 10: Convert filtered TSV to VCF
     CONVERT_INDELIBLE_TO_VCF(FILTER_INDELIBLE.out.filtered_cnvs)
 
-    // Step 11: Compress, sort, index, and annotate each VCF with TOOL=INDELIBLE
+    // Step 11: bgzip-compress, coordinate-sort, and tabix-index each per-sample VCF
     BGZIP_SORT_INDEX_VCF(CONVERT_INDELIBLE_TO_VCF.out.vcfs)
 
     emit:
