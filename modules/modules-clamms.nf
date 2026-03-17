@@ -236,7 +236,7 @@ process CALL_CNVS {
     #!/bin/bash
     set -euo pipefail
     sex=\$(grep "^${sample_id}\t" ${sexinfo} | cut -f 2)
-    if [ -z "\$sex" ]; then echo "Error: Sample ${sample_id} not found in sexinfo" >&2; exit 1; fi
+    if [ -z "\$sex" ]; then echo "Error: Sample ${sample_id} not found in ${sexinfo}" >&2; exit 1; fi
     \$CLAMMS_DIR/call_cnv ${norm_cov} ${sample_models} --sex \$sex > ${sample_id}.cnv.bed
     """
 }

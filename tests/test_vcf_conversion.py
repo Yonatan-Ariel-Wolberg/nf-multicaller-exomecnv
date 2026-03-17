@@ -320,6 +320,62 @@ class TestCLAMMSBEDtoVCF:
         contig_lines = [l for l in header if l.startswith("##contig=")]
         assert contig_lines, "No ##contig= lines found in VCF header"
 
+    def test_chrom_field_has_chr_prefix(self, clamms_bed, sample_file, fai_file, tmp_path):
+        """CHROM column in every data record has the 'chr' prefix.
+
+        When the input BED already contains 'chr'-prefixed chromosome names
+        (e.g. chr1, chr2) the converter must preserve the prefix without
+        doubling it (i.e. must not produce 'chrchr1').
+        """
+        import clamms_bed_to_vcf as mod
+
+        out = str(tmp_path / "out")
+        mod.process_clamms_data(clamms_bed, sample_file, fai_file, out)
+
+        for fname in ("SAMPLE1_CLAMMS_output.vcf", "SAMPLE2_CLAMMS_output.vcf"):
+            _, data = _read_vcf_records(os.path.join(out, fname))
+            assert data, f"{fname} contains no data records"
+            for record in data:
+                chrom = record.split("\t")[0]
+                assert chrom.startswith("chr"), (
+                    f"CHROM field does not start with 'chr' in {fname}: got '{chrom}'"
+                )
+                assert not chrom.startswith("chrchr"), (
+                    f"CHROM field has double 'chr' prefix in {fname}: got '{chrom}'"
+                )
+
+    def test_chrom_field_chr_added_when_missing(self, sample_file, fai_file, tmp_path):
+        """When the input BED has no 'chr' prefix (e.g. '1', '2'), the
+        converter must add 'chr' so that the VCF is GRCh3x-compliant.
+
+        This matches real CLAMMS workflow output: NORMALIZE_DOC runs
+        ``sed 's/^chr//g'`` and TRAIN_MODELS runs ``sed 's/chr//g'``,
+        so call_cnv produces chromosome names without the prefix.
+        """
+        import clamms_bed_to_vcf as mod
+
+        # Build a BED file whose CHROM column has no 'chr' prefix
+        bed = tmp_path / "clamms_no_chr.bed"
+        rows = [
+            # CHROM  START  END   INTERVAL       SAMPLE   CNV  MLCN  NUM_WIN  Q_SOME  Q_EXACT  QL_EXT  L_EXT  QR_EXT  R_EXT  QL_CONT  L_CONT  QR_CONT  R_CONT
+            "1\t1000\t2000\t1:1000-2000\tSAMPLE1\tDEL\t1\t5\t600\t50\t30\t800\t25\t1200\t15\t1100\t20\t1300",
+            "2\t5000\t8000\t2:5000-8000\tSAMPLE2\tDUP\t3\t8\t450\t40\t20\t4000\t15\t9000\t10\t5200\t12\t7800",
+        ]
+        bed.write_text("\n".join(rows) + "\n")
+
+        out = str(tmp_path / "out")
+        mod.process_clamms_data(str(bed), sample_file, fai_file, out)
+
+        for fname in ("SAMPLE1_CLAMMS_output.vcf", "SAMPLE2_CLAMMS_output.vcf"):
+            _, data = _read_vcf_records(os.path.join(out, fname))
+            assert data, f"{fname} contains no data records"
+            for record in data:
+                chrom = record.split("\t")[0]
+                assert chrom.startswith("chr"), (
+                    f"CHROM field does not start with 'chr' in {fname}: "
+                    f"got '{chrom}' (converter must add 'chr' when input lacks it)"
+                )
+
 
 # ===========================================================================
 # INDELIBLE
