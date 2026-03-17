@@ -150,7 +150,7 @@ The workflow has been tested on the **University of the Witwatersrand (Wits) UI 
 ```bash
 # Load the required modules (adjust module names to match the cluster's module system)
 module load nextflow
-module load apptainer   # or: module load singularity
+module load apptainer   # or: module load singularity (apptainer is already loaded by default on the Wits UI Cluster)
 
 # Run a workflow — replace <workflow> and the params file as needed
 nextflow run main.nf \
