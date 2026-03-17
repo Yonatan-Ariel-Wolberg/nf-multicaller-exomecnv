@@ -45,9 +45,9 @@ process RUN_SURVIVOR_MERGE {
     SURVIVOR merge \\
         \$list_file \\
         1000 \\
+        2 \\
         1 \\
         1 \\
-        0 \\
         0 \\
         30 \\
         "${sample_id}_survivor_merged.vcf"
