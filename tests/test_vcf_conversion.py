@@ -181,6 +181,28 @@ class TestCanoesCSVtoVCF:
         contig_lines = [l for l in header if l.startswith("##contig=")]
         assert contig_lines, "No ##contig= lines found in VCF header"
 
+    def test_chrom_field_has_chr_prefix(self, canoes_csv, sample_file, fai_file, tmp_path):
+        """CHROM column in every data record has the 'chr' prefix.
+
+        CANOES.R outputs integer chromosome numbers (1, 2, …) because
+        RUN_CANOES strips the prefix with sed before invoking R.
+        The converter must re-add 'chr' so that the VCF is compliant with
+        the GRCh3x reference naming convention.
+        """
+        import canoes_csv_to_vcf as mod
+
+        out = str(tmp_path / "out")
+        mod.process_canoes_data(canoes_csv, sample_file, fai_file, out)
+
+        for fname in ("SAMPLE1_CANOES_output.vcf", "SAMPLE2_CANOES_output.vcf"):
+            _, data = _read_vcf_records(os.path.join(out, fname))
+            assert data, f"{fname} contains no data records"
+            for record in data:
+                chrom = record.split("\t")[0]
+                assert chrom.startswith("chr"), (
+                    f"CHROM field does not start with 'chr' in {fname}: got '{chrom}'"
+                )
+
 
 # ===========================================================================
 # CLAMMS
