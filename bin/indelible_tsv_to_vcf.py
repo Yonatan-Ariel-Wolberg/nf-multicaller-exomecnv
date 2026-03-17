@@ -132,6 +132,8 @@ def write_vcf_header(vcf_file, fai_file, sample_id):
     vcf_file.write("##INFO=<ID=BLAST_HGNC,Number=1,Type=String,Description=\"Blast HGNC\">\n")
     vcf_file.write("##INFO=<ID=BLAST_HGNC_CONSTRAINED,Number=1,Type=String,Description=\"Blast HGNC constrained\">\n")
     vcf_file.write("##INFO=<ID=BLAST_DDG2P,Number=1,Type=String,Description=\"Blast DDG2P\">\n")
+    vcf_file.write("##INFO=<ID=MUM_SR,Number=1,Type=Integer,Description=\"Split reads in mother supporting the variant (de novo analysis)\">\n")
+    vcf_file.write("##INFO=<ID=DAD_SR,Number=1,Type=Integer,Description=\"Split reads in father supporting the variant (de novo analysis)\">\n")
     vcf_file.write("##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">\n")
     vcf_file.write("##FORMAT=<ID=GQ,Number=1,Type=Float,Description=\"Genotype Quality (Mapped from PROB_Y)\">\n")
     
@@ -212,7 +214,9 @@ def convert_indelible_tsv_to_vcf(input_file, output_dir, sample_id, fai_file, lo
                             'BLAST_DIST': 'blast_dist',
                             'BLAST_HGNC': 'blast_hgnc',
                             'BLAST_HGNC_CONSTRAINED': 'blast_hgnc_constrained',
-                            'BLAST_DDG2P': 'blast_ddg2p'
+                            'BLAST_DDG2P': 'blast_ddg2p',
+                            'MUM_SR': 'mum_sr',
+                            'DAD_SR': 'dad_sr'
                         }
 
                         # Strictly append each optional field to the INFO string (NOT the FORMAT string)

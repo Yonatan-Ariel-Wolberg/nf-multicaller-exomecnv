@@ -646,6 +646,32 @@ process ADD_DRAGEN_TOOL_ANNOTATION {
     """
 }
 
+// Process to normalise CNV quality scores to a common scale
+process NORMALISE_CNV_QUALITY_SCORES {
+    tag "${vcf.simpleName}"
+    label 'pysam'
+    publishDir "${params.localDownloadPath}", mode: 'copy', overwrite: true
+
+    input:
+    path vcf
+
+    output:
+    path("*.normalised.vcf.gz"),     emit: normalised_vcf
+    path("*.normalised.vcf.gz.tbi"), emit: normalised_vcf_index
+
+    script:
+    def sample_name = vcf.name - '.annotated.vcf.gz'
+    def normalised_gz = "${sample_name}.normalised.vcf.gz"
+    """
+    normalise_cnv_caller_quality_scores.py \\
+        --input_vcf ${vcf} \\
+        --output_vcf ${sample_name}.normalised.vcf \\
+        --caller DRAGEN
+    bgzip -c ${sample_name}.normalised.vcf > ${normalised_gz}
+    tabix -p vcf ${normalised_gz}
+    """
+}
+
 // =====================================================================================
 // SUB-WORKFLOW TO CHAIN THE PROCESSES TOGETHER
 // =====================================================================================
@@ -693,7 +719,12 @@ workflow DRAGEN {
     // Step 9: Annotate downloaded VCF files with TOOLS=DRAGEN in INFO field
     ADD_DRAGEN_TOOL_ANNOTATION(DOWNLOAD_ANALYSIS_OUTPUT.out.dataFile)
 
+    // Step 10: Normalise quality scores to a common scale
+    NORMALISE_CNV_QUALITY_SCORES(ADD_DRAGEN_TOOL_ANNOTATION.out.annotated_vcfs.flatten())
+
     emit:
-    result = DOWNLOAD_ANALYSIS_OUTPUT.out.dataFile
-    annotated_vcfs = ADD_DRAGEN_TOOL_ANNOTATION.out.annotated_vcfs
+    result               = DOWNLOAD_ANALYSIS_OUTPUT.out.dataFile
+    annotated_vcfs       = ADD_DRAGEN_TOOL_ANNOTATION.out.annotated_vcfs
+    normalised_vcf       = NORMALISE_CNV_QUALITY_SCORES.out.normalised_vcf
+    normalised_vcf_index = NORMALISE_CNV_QUALITY_SCORES.out.normalised_vcf_index
 }
