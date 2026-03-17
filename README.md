@@ -43,9 +43,26 @@ Built with Nextflow for reproducible, scalable, and portable data analysis.
 
 ## Requirements
 
+### Operating System
+- **Linux** or **Unix** (macOS, HPC clusters running Linux)
+  > Windows is **not** supported. Use WSL2 or a remote Linux server if you are on Windows.
+
 ### Software
-- **Nextflow**: >= 20.04
-- **Java**: >= 8
+- **Apptainer** (formerly Singularity): >= 1.0  
+  All tool containers are pulled and executed via Apptainer. Install it following the [official guide](https://apptainer.org/docs/admin/main/installation.html).
+- **Nextflow**: >= 20.04  
+  Install with:
+  ```bash
+  curl -s https://get.nextflow.io | bash
+  ```
+- **Java**: >= 8 (required by Nextflow)  
+  Install OpenJDK:
+  - Debian/Ubuntu: `sudo apt install default-jdk`
+  - RHEL/CentOS/Rocky: `sudo yum install java-1.8.0-openjdk`
+  - macOS (Homebrew): `brew install openjdk`
+
+### Libraries and Dependencies
+All bioinformatics tools (CANOES, CLAMMS, XHMM, GATK, CNVkit, InDelible, ICAv2 CLI, SURVIVOR, Truvari, bcftools, bedtools, Picard) are provided as pre-built container images and are downloaded automatically by Apptainer at runtime. No manual tool installation is required beyond Apptainer and Nextflow themselves.
 
 ### Computing Resources
 - Adequate CPU cores (parallel execution recommended)
