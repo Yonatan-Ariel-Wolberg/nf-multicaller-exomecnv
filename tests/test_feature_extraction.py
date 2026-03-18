@@ -4,8 +4,9 @@ Tests for bin/feature_extraction.py.
 
 Validates:
   1. Module-level structure: imports, public API, module docstring.
-  2. Helper functions: _load_bed, _count_probes, _mean_mappability,
-     _load_mappability_bed, _gc_content, _rd_ratio.
+  2. Helper functions: _load_bed, _count_probes, _count_probes_flank,
+     _mean_mappability, _load_mappability_bed, _gc_content, _rd_ratio,
+     _mean_depth, _l2r_stats.
   3. extract_normalized_features: signature has required optional parameters
      (bed_file, bam_file, reference_fasta, mappability_file, rd_flank),
      produces expected columns, and handles missing optional inputs.
@@ -97,6 +98,15 @@ class TestModuleStructure:
 
     def test_module_docstring_mentions_mappability(self, script_text):
         assert 'mappability' in script_text
+
+    def test_module_docstring_mentions_pd3_paper(self, script_text):
+        assert 'pd3' in script_text or 'cnv-paper-2020' in script_text
+
+    def test_module_docstring_mentions_n_probes_flank(self, script_text):
+        assert 'n_probes_flank' in script_text
+
+    def test_module_docstring_mentions_l2r(self, script_text):
+        assert 'l2r_mean' in script_text
 
 
 # ===========================================================================
@@ -552,3 +562,197 @@ class TestAggregateQualNorm:
         # The aggregate must filter on is_{caller} == 1, not all callers.
         assert "is_{cn}" in script_text or "f'is_{cn}'" in script_text or \
                "_qual_norm_vals" in script_text
+
+
+# ===========================================================================
+# 16. pd3/cnv-paper-2020 inspired features: _count_probes_flank
+# ===========================================================================
+
+class TestProbeFlankCount:
+    """_count_probes_flank must count probes outside the CNV in a flanking window."""
+
+    def test_count_probes_flank_present(self, script_text):
+        assert 'def _count_probes_flank(' in script_text
+
+    def test_n_probes_flank_column_emitted(self, script_text):
+        assert 'n_probes_flank' in script_text
+
+    def test_count_probes_flank_basic(self, fe, tmp_path):
+        """Probes flanking a CNV should be counted; probes inside should not."""
+        bed = tmp_path / 'flank.bed'
+        # CNV is [200, 400), length=200, flank=100 on each side → window [100, 500)
+        # Probes: 50-100 (outside window), 100-150 (in left flank), 150-200 (adjacent),
+        #         250-350 (in CNV), 400-450 (in right flank), 500-600 (outside window)
+        bed.write_text(
+            'chr1\t50\t100\n'    # outside window (ends at window start)
+            'chr1\t100\t150\n'   # left flank: overlaps window and not CNV
+            'chr1\t150\t200\n'   # left flank: ends at CNV start
+            'chr1\t250\t350\n'   # inside CNV -> excluded
+            'chr1\t400\t450\n'   # right flank
+            'chr1\t500\t600\n'   # outside window
+        )
+        intervals = fe._load_bed(str(bed))
+        count = fe._count_probes_flank('chr1', 200, 400, intervals)
+        # Expected: probes at [100,150) and [150,200) and [400,450) = 3
+        assert count == 3
+
+    def test_count_probes_flank_excludes_cnv_probes(self, fe, tmp_path):
+        """Probes overlapping the CNV must not be counted."""
+        bed = tmp_path / 'flank2.bed'
+        bed.write_text(
+            'chr1\t0\t100\n'     # ends exactly at left-flank window start (iv_end=100 > left_start=100 is False) -> outside window
+            'chr1\t100\t300\n'   # overlaps CNV [200, 400) -> in_cnv=True, excluded
+            'chr1\t400\t500\n'   # right flank, not in CNV
+        )
+        intervals = fe._load_bed(str(bed))
+        count = fe._count_probes_flank('chr1', 200, 400, intervals)
+        # Only [400,500) qualifies: in flank window and outside CNV
+        assert count == 1
+
+    def test_count_probes_flank_no_flanking_probes(self, fe, tmp_path):
+        """When there are no probes outside the CNV, return 0."""
+        bed = tmp_path / 'flank3.bed'
+        bed.write_text('chr1\t200\t400\n')  # entirely within CNV
+        intervals = fe._load_bed(str(bed))
+        count = fe._count_probes_flank('chr1', 200, 400, intervals)
+        assert count == 0
+
+    def test_count_probes_flank_wrong_chrom(self, fe, tmp_path):
+        bed = tmp_path / 'flank4.bed'
+        bed.write_text('chr2\t0\t100\n')
+        intervals = fe._load_bed(str(bed))
+        count = fe._count_probes_flank('chr1', 200, 400, intervals)
+        assert count == 0
+
+    def test_count_probes_flank_nan_without_bed(self, script_text):
+        assert 'n_probes_flank' in script_text and 'np.nan' in script_text
+
+
+# ===========================================================================
+# 17. pd3/cnv-paper-2020 inspired features: _l2r_stats
+# ===========================================================================
+
+class TestL2rStats:
+    """_l2r_stats must return probe-level log2 ratio statistics."""
+
+    def test_l2r_stats_present(self, script_text):
+        assert 'def _l2r_stats(' in script_text
+
+    def test_l2r_mean_column_emitted(self, script_text):
+        assert 'l2r_mean' in script_text
+
+    def test_l2r_dev_column_emitted(self, script_text):
+        assert 'l2r_dev' in script_text
+
+    def test_l2r_flank_diff_column_emitted(self, script_text):
+        assert 'l2r_flank_diff' in script_text
+
+    def test_l2r_stats_nan_on_no_probes(self, fe, tmp_path):
+        """When the BED has no probes, all three stats must be NaN."""
+        bed = tmp_path / 'empty.bed'
+        bed.write_text('')
+        intervals = fe._load_bed(str(bed))
+
+        class MockBam:
+            def pileup(self, *a, **kw):
+                return []
+
+        l2r_mean, l2r_dev, l2r_flank_diff = fe._l2r_stats(
+            MockBam(), 'chr1', 200, 400, intervals
+        )
+        assert math.isnan(l2r_mean)
+        assert math.isnan(l2r_dev)
+        assert math.isnan(l2r_flank_diff)
+
+    def test_l2r_stats_nan_on_no_flanking_probes(self, fe, tmp_path):
+        """When there are CNV probes but no flanking probes, all three must be NaN."""
+        bed = tmp_path / 'noflanks.bed'
+        bed.write_text('chr1\t200\t400\n')  # only inside CNV
+        intervals = fe._load_bed(str(bed))
+
+        class MockBam:
+            def pileup(self, chrom, start, end, **kw):
+                # Return depth 10 for any region
+                return [type('Col', (), {'nsegments': 10})()] * (end - start)
+
+        l2r_mean, l2r_dev, l2r_flank_diff = fe._l2r_stats(
+            MockBam(), 'chr1', 200, 400, intervals
+        )
+        assert math.isnan(l2r_mean)
+        assert math.isnan(l2r_dev)
+        assert math.isnan(l2r_flank_diff)
+
+    def test_l2r_stats_del_signal(self, fe, tmp_path):
+        """DEL should produce a negative l2r_mean."""
+        bed = tmp_path / 'del.bed'
+        # 2 probes in CNV [1000, 2000), 2 left-flank, 2 right-flank
+        bed.write_text(
+            'chr1\t800\t900\n'    # left flank probe 1
+            'chr1\t900\t1000\n'   # left flank probe 2
+            'chr1\t1000\t1200\n'  # CNV probe 1
+            'chr1\t1600\t1800\n'  # CNV probe 2
+            'chr1\t2000\t2100\n'  # right flank probe 1
+            'chr1\t2100\t2200\n'  # right flank probe 2
+        )
+        intervals = fe._load_bed(str(bed))
+
+        def _make_bam(depths_by_region):
+            """depths_by_region: list of (start, depth) sorted by start."""
+            class MockPilCol:
+                def __init__(self, n):
+                    self.nsegments = n
+
+            class MockBam:
+                def pileup(self, chrom, start, end, **kw):
+                    # Return the depth associated with this region
+                    for reg_start, dep in depths_by_region:
+                        if abs(start - reg_start) < 300:
+                            return [MockPilCol(dep)]
+                    return []
+
+            return MockBam()
+
+        # Flanking probes: depth 20; CNV probes: depth 10 (half -> DEL, l2r ≈ -1)
+        bam = _make_bam([
+            (800, 20), (900, 20),    # left flank
+            (1000, 10), (1600, 10),  # CNV (halved depth)
+            (2000, 20), (2100, 20),  # right flank
+        ])
+        l2r_mean, l2r_dev, l2r_flank_diff = fe._l2r_stats(
+            bam, 'chr1', 1000, 2000, intervals
+        )
+        assert l2r_mean < 0, f"Expected negative l2r_mean for DEL, got {l2r_mean}"
+
+    def test_l2r_stats_dup_signal(self, fe, tmp_path):
+        """DUP should produce a positive l2r_mean."""
+        bed = tmp_path / 'dup.bed'
+        bed.write_text(
+            'chr1\t800\t900\n'
+            'chr1\t900\t1000\n'
+            'chr1\t1000\t1200\n'
+            'chr1\t1600\t1800\n'
+            'chr1\t2000\t2100\n'
+            'chr1\t2100\t2200\n'
+        )
+        intervals = fe._load_bed(str(bed))
+
+        class MockPilCol:
+            def __init__(self, n):
+                self.nsegments = n
+
+        class MockBam:
+            def pileup(self, chrom, start, end, **kw):
+                # Flanking depth=10, CNV depth=20 (doubled -> DUP, l2r ≈ +1)
+                if 1000 <= start < 2000:
+                    return [MockPilCol(20)]
+                return [MockPilCol(10)]
+
+        l2r_mean, l2r_dev, l2r_flank_diff = fe._l2r_stats(
+            MockBam(), 'chr1', 1000, 2000, intervals
+        )
+        assert l2r_mean > 0, f"Expected positive l2r_mean for DUP, got {l2r_mean}"
+
+    def test_l2r_stats_nan_without_bam_or_bed(self, script_text):
+        """When either bam_file or bed_file is absent, L2R columns must be NaN."""
+        assert 'l2r_mean' in script_text and 'np.nan' in script_text
+

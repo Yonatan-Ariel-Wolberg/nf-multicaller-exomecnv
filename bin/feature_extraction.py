@@ -6,10 +6,17 @@ together with per-caller normalised VCFs (produced by
 ``normalise_cnv_caller_quality_scores.py``) and optional genomic annotation
 files (capture BED, BAM/CRAM, reference FASTA, mappability BED).
 
-Feature design is informed by CN-Learn (Pounraja et al. 2019,
-https://github.com/girirajanlab/CN_Learn), adapted to this pipeline's
-additional callers (XHMM, GATK-gCNV, CNVkit, DRAGEN Germline, INDELIBLE) and
-the QUAL_norm quality-score normalisation introduced here.
+Feature design is informed by:
+  - CN-Learn (Pounraja et al. 2019, https://github.com/girirajanlab/CN_Learn),
+    adapted to this pipeline's additional callers (XHMM, GATK-gCNV, CNVkit,
+    DRAGEN Germline, INDELIBLE) and the QUAL_norm quality-score normalisation.
+  - pd3/cnv-paper-2020 (Danecek et al. 2020,
+    https://github.com/pd3/cnv-paper-2020), whose random forest used
+    concordance, per-caller quality, read-depth fraction, probe counts, GC,
+    mappability, and probe-level log2 ratio (L2R) statistics (l2r_mean,
+    l2r_dev, l2r_flank_diff) as the most discriminating features. The nflank
+    (flanking probe count) and L2R features from that paper are implemented
+    here as n_probes_flank, l2r_mean, l2r_dev, and l2r_flank_diff.
 
 Features extracted
 ------------------
@@ -23,10 +30,10 @@ Structural / location
                        can exploit in addition to the raw bp length.
     cnv_type        -- 1 for DUP, 0 for DEL/other  (CN-Learn: TYPE_IND)
 
-Concordance / overlap  (CN-Learn: NUM_OVERLAPS)
+Concordance / overlap  (CN-Learn: NUM_OVERLAPS; pd3: concordance)
     concordance -- number of callers supporting this event
 
-Per-caller flags  (CN-Learn: caller_list binary indicators)
+Per-caller flags  (CN-Learn: caller_list binary indicators; pd3: per-caller cols)
     is_{caller} -- 1 if caller supports this event, else 0
 
 Per-caller quality scores  (absent in CN-Learn; added because QUAL_norm makes
@@ -42,15 +49,31 @@ Aggregate quality summaries  (complements per-caller columns)
     mean_qual_norm_supported -- mean QUAL_norm across callers that support this
                                 event (NaN when concordance == 0)
 
-Genomic annotations  (CN-Learn: RD_PROP, GC, MAP, NUM_TARGETS)
-    n_probes     -- number of capture-target probes overlapping the CNV
-                    (NaN when bed_file is absent)
-    rd_ratio     -- mean read depth in CNV / mean read depth in flanking regions
-                    (NaN when bam_file is absent)
-    gc_content   -- GC fraction of the CNV interval
-                    (NaN when reference_fasta is absent)
-    mappability  -- weighted-mean mappability score over the CNV interval
-                    (NaN when mappability_file is absent)
+Genomic annotations  (CN-Learn: RD_PROP, GC, MAP, NUM_TARGETS;
+                      pd3: read-depth-fraction, GC, mappable, number-of-probes)
+    n_probes        -- number of capture-target probes overlapping the CNV
+                       (NaN when bed_file is absent)
+    n_probes_flank  -- number of capture-target probes in the flanking region
+                       (outside CNV, within half-CNV-length on each side);
+                       mirrors pd3's nflank feature.
+                       (NaN when bed_file is absent)
+    rd_ratio        -- mean read depth in CNV / mean read depth in flanking
+                       regions (NaN when bam_file is absent)
+    gc_content      -- GC fraction of the CNV interval
+                       (NaN when reference_fasta is absent)
+    mappability     -- weighted-mean mappability score over the CNV interval
+                       (NaN when mappability_file is absent)
+
+Probe-level log2 ratio statistics  (pd3: l2r_mean, l2r_dev, l2r_flank_diff)
+    Computed per-probe from BAM depths normalised by flanking-probe baseline.
+    All three are NaN when bed_file or bam_file is absent.
+    l2r_mean       -- mean log2(probe_depth / flank_baseline) across CNV probes;
+                      negative for DEL, positive for DUP.
+    l2r_dev        -- variance of per-probe log2 ratios within the CNV;
+                      low for clean CNV signals, high for noisy/false calls.
+    l2r_flank_diff -- l2r_mean minus the mean flanking-probe log2 ratio;
+                      captures how much the CNV region deviates from its
+                      immediate neighbourhood (robust to whole-genome shifts).
 
 Caller-specific secondary metrics  (NaN when not present in the VCF)
     xhmm_rd        -- XHMM RD Z-score (INFO field)
@@ -158,6 +181,40 @@ def _count_probes(chrom, start, end, bed_intervals):
     return count
 
 
+def _count_probes_flank(chrom, start, end, bed_intervals):
+    """Count BED probes in the flanking region around [start, end).
+
+    The flank window extends half the CNV length on each side.  Probes that
+    overlap the CNV itself are excluded so only the immediately neighbouring
+    targets are counted.  This mirrors the ``nflank`` feature from
+    pd3/cnv-paper-2020 (Danecek et al. 2020).
+
+    Parameters
+    ----------
+    chrom : str
+    start, end : int
+        Half-open CNV coordinates.
+    bed_intervals : dict[str, list[tuple[int, int]]]
+        Pre-loaded BED intervals as returned by ``_load_bed``.
+
+    Returns
+    -------
+    int
+        Number of BED probes in the flanking region.
+    """
+    cnv_len = end - start
+    flank = max(1, cnv_len // 2)
+    left_start = max(0, start - flank)
+    right_end = end + flank
+    count = 0
+    for iv_start, iv_end in bed_intervals.get(chrom, []):
+        in_flank = iv_start < right_end and iv_end > left_start
+        in_cnv = iv_start < end and iv_end > start
+        if in_flank and not in_cnv:
+            count += 1
+    return count
+
+
 # ── Read-depth helpers ────────────────────────────────────────────────────────
 
 def _mean_depth(bam, chrom, start, end):
@@ -184,6 +241,76 @@ def _rd_ratio(bam, chrom, start, end, flank=500):
     if flank_depth == 0.0:
         return np.nan
     return target_depth / flank_depth
+
+
+def _l2r_stats(bam, chrom, start, end, bed_intervals, n_flank=20):
+    """Probe-level log2 ratio statistics for a CNV interval.
+
+    Inspired by the l2r_mean / l2r_dev / l2r_flank_diff features from
+    pd3/cnv-paper-2020 (Danecek et al. 2020).
+
+    For each capture probe (BED interval) overlapping the CNV, the per-probe
+    read depth is normalised against the mean depth of the *n_flank* nearest
+    probes on each side (the flanking baseline).  Log2 ratios are then
+    computed per probe and summarised as mean, variance, and the difference
+    between the CNV mean and the flanking mean (which is ~0 by definition of
+    the baseline, but varies when left and right flanks are unequal).
+
+    Parameters
+    ----------
+    bam : pysam.AlignmentFile
+    chrom : str
+    start, end : int
+        Half-open CNV coordinates.
+    bed_intervals : dict[str, list[tuple[int, int]]]
+        Pre-loaded capture BED as returned by ``_load_bed``.
+    n_flank : int
+        Number of probes to use on each side of the CNV as the baseline.
+
+    Returns
+    -------
+    tuple[float, float, float]
+        (l2r_mean, l2r_dev, l2r_flank_diff).  All three are NaN when
+        there are no CNV probes or no flanking probes.
+    """
+    all_probes = sorted(bed_intervals.get(chrom, []))
+    cnv_probes = [(s, e) for s, e in all_probes if s < end and e > start]
+    left_probes = [(s, e) for s, e in all_probes if e <= start][-n_flank:]
+    right_probes = [(s, e) for s, e in all_probes if s >= end][:n_flank]
+
+    if not cnv_probes or not (left_probes or right_probes):
+        return np.nan, np.nan, np.nan
+
+    left_depths = np.array([_mean_depth(bam, chrom, s, e) for s, e in left_probes])
+    right_depths = np.array([_mean_depth(bam, chrom, s, e) for s, e in right_probes])
+    all_flank_depths = np.concatenate([left_depths, right_depths])
+    baseline = float(np.mean(all_flank_depths))
+    if baseline == 0.0:
+        return np.nan, np.nan, np.nan
+
+    cnv_depths = np.array([_mean_depth(bam, chrom, s, e) for s, e in cnv_probes])
+    # Replace zero depths with NaN before log to avoid -inf
+    with np.errstate(divide='ignore', invalid='ignore'):
+        cnv_l2r = np.where(cnv_depths > 0, np.log2(cnv_depths / baseline), np.nan)
+    cnv_l2r = cnv_l2r[np.isfinite(cnv_l2r)]
+    if cnv_l2r.size == 0:
+        return np.nan, np.nan, np.nan
+
+    l2r_mean = float(np.mean(cnv_l2r))
+    l2r_dev = float(np.var(cnv_l2r))
+
+    # Flanking mean l2r (relative to same baseline)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        left_l2r = np.log2(left_depths / baseline) if left_depths.size > 0 else np.array([])
+        right_l2r = np.log2(right_depths / baseline) if right_depths.size > 0 else np.array([])
+    flank_l2r = np.concatenate([
+        left_l2r[np.isfinite(left_l2r)] if left_l2r.size > 0 else np.array([]),
+        right_l2r[np.isfinite(right_l2r)] if right_l2r.size > 0 else np.array([]),
+    ])
+    mean_flank_l2r = float(np.mean(flank_l2r)) if flank_l2r.size > 0 else 0.0
+    l2r_flank_diff = l2r_mean - mean_flank_l2r
+
+    return l2r_mean, l2r_dev, l2r_flank_diff
 
 
 # ── GC content ────────────────────────────────────────────────────────────────
@@ -338,6 +465,13 @@ def extract_normalized_features(
             else np.nan
         )
 
+        # ── flanking probe count (pd3/cnv-paper-2020: nflank) ─────────────
+        v_data['n_probes_flank'] = (
+            _count_probes_flank(record.chrom, record.pos, record.stop, bed_intervals)
+            if bed_intervals
+            else np.nan
+        )
+
         # ── mappability ───────────────────────────────────────────────────
         v_data['mappability'] = _mean_mappability(
             record.chrom, record.pos, record.stop, mappability_intervals
@@ -349,6 +483,17 @@ def extract_normalized_features(
             if bam is not None
             else np.nan
         )
+
+        # ── probe-level L2R statistics (pd3/cnv-paper-2020) ───────────────
+        if bam is not None and bed_intervals:
+            l2r_mean, l2r_dev, l2r_flank_diff = _l2r_stats(
+                bam, record.chrom, record.pos, record.stop, bed_intervals
+            )
+        else:
+            l2r_mean, l2r_dev, l2r_flank_diff = np.nan, np.nan, np.nan
+        v_data['l2r_mean'] = l2r_mean
+        v_data['l2r_dev'] = l2r_dev
+        v_data['l2r_flank_diff'] = l2r_flank_diff
 
         # ── per-caller quality features ───────────────────────────────────
         if merger_mode == 'survivor':
