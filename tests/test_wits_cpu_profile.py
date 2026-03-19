@@ -493,60 +493,123 @@ class TestBindPaths:
 
 
 # ===========================================================================
-# 8. params/params-wits.json – Wits-specific template
+# 8. params/params-*-wits.json – Wits-specific templates (one per workflow)
 # ===========================================================================
 
-PARAMS_WITS_JSON = os.path.join(REPO_ROOT, 'params', 'params-wits.json')
+WITS_WORKFLOWS = [
+    'canoes', 'clamms', 'cnvkit', 'gatk-gcnv',
+    'icav2-dragen', 'indelible', 'survivor', 'truvari', 'xhmm',
+]
+
+PARAMS_CANOES_WITS_JSON = os.path.join(REPO_ROOT, 'params', 'params-canoes-wits.json')
 
 
 class TestParamsWitsJson:
-    """params/params-wits.json must exist and contain Wits-specific bind paths."""
+    """params/params-*-wits.json files must exist for every workflow."""
 
-    def _read_json(self):
+    def _read_json(self, filename):
         import json
-        with open(PARAMS_WITS_JSON) as fh:
+        path = os.path.join(REPO_ROOT, 'params', filename)
+        with open(path) as fh:
             return json.load(fh)
 
+    def test_all_wits_params_files_exist(self):
+        """A params-<workflow>-wits.json file must exist for each workflow."""
+        for wf in WITS_WORKFLOWS:
+            filename = f'params-{wf}-wits.json'
+            path = os.path.join(REPO_ROOT, 'params', filename)
+            assert os.path.isfile(path), (
+                f"{filename} must exist as a ready-to-use template for "
+                "running the workflow on the ZA-Wits-Core HPC cluster"
+            )
+
+    def test_all_wits_params_files_are_valid_json(self):
+        """Every params-*-wits.json file must be valid JSON."""
+        import json
+        for wf in WITS_WORKFLOWS:
+            filename = f'params-{wf}-wits.json'
+            path = os.path.join(REPO_ROOT, 'params', filename)
+            with open(path) as fh:
+                try:
+                    json.load(fh)
+                except json.JSONDecodeError as exc:
+                    raise AssertionError(
+                        f"{filename} is not valid JSON: {exc}"
+                    )
+
+    def test_all_wits_params_files_have_bind_paths(self):
+        """Every params-*-wits.json must have a bind_paths key."""
+        for wf in WITS_WORKFLOWS:
+            filename = f'params-{wf}-wits.json'
+            data = self._read_json(filename)
+            assert 'bind_paths' in data, (
+                f"{filename} must contain a 'bind_paths' key so that Wits users "
+                "can see an example of how to specify their data directories"
+            )
+
+    def test_all_wits_params_files_bind_paths_contains_wits_dirs(self):
+        """Every params-*-wits.json bind_paths must include the standard Wits data dirs."""
+        for wf in WITS_WORKFLOWS:
+            filename = f'params-{wf}-wits.json'
+            data = self._read_json(filename)
+            bind_paths = data.get('bind_paths', '')
+            for expected_dir in ('/dataB/aux', '/dataG/ddd', '/dataG/ddd-2023', '/home/ywolberg'):
+                assert expected_dir in bind_paths, (
+                    f"{filename} bind_paths must include '{expected_dir}' — "
+                    "this is where the user's reference data and sample data live on "
+                    "the ZA-Wits-Core cluster"
+                )
+
+    def test_all_wits_params_files_workflow_is_set(self):
+        """Every params-*-wits.json must declare a workflow parameter."""
+        for wf in WITS_WORKFLOWS:
+            filename = f'params-{wf}-wits.json'
+            data = self._read_json(filename)
+            assert 'workflow' in data, (
+                f"{filename} must specify which workflow to run via the 'workflow' key"
+            )
+
+    # Keep backward-compatible tests targeting the canonical CANOES Wits file.
     def test_params_wits_json_exists(self):
-        """params/params-wits.json must exist as a Wits cluster template."""
-        assert os.path.isfile(PARAMS_WITS_JSON), (
-            "params/params-wits.json must exist as a ready-to-use template for "
+        """params/params-canoes-wits.json must exist as a Wits cluster template."""
+        assert os.path.isfile(PARAMS_CANOES_WITS_JSON), (
+            "params/params-canoes-wits.json must exist as a ready-to-use template for "
             "running the workflow on the ZA-Wits-Core HPC cluster"
         )
 
     def test_params_wits_json_is_valid_json(self):
-        """params/params-wits.json must be valid JSON."""
+        """params/params-canoes-wits.json must be valid JSON."""
         import json
-        with open(PARAMS_WITS_JSON) as fh:
+        with open(PARAMS_CANOES_WITS_JSON) as fh:
             try:
                 json.load(fh)
             except json.JSONDecodeError as exc:
                 raise AssertionError(
-                    f"params/params-wits.json is not valid JSON: {exc}"
+                    f"params/params-canoes-wits.json is not valid JSON: {exc}"
                 )
 
     def test_params_wits_json_has_bind_paths(self):
-        """params-wits.json must have a bind_paths key."""
-        data = self._read_json()
+        """params-canoes-wits.json must have a bind_paths key."""
+        data = self._read_json('params-canoes-wits.json')
         assert 'bind_paths' in data, (
-            "params-wits.json must contain a 'bind_paths' key so that Wits users "
+            "params-canoes-wits.json must contain a 'bind_paths' key so that Wits users "
             "can see an example of how to specify their data directories"
         )
 
     def test_params_wits_json_bind_paths_contains_wits_dirs(self):
-        """params-wits.json bind_paths must include the standard Wits data dirs."""
-        data = self._read_json()
+        """params-canoes-wits.json bind_paths must include the standard Wits data dirs."""
+        data = self._read_json('params-canoes-wits.json')
         bind_paths = data.get('bind_paths', '')
         for expected_dir in ('/dataB/aux', '/dataG/ddd', '/dataG/ddd-2023', '/home/ywolberg'):
             assert expected_dir in bind_paths, (
-                f"params-wits.json bind_paths must include '{expected_dir}' — "
+                f"params-canoes-wits.json bind_paths must include '{expected_dir}' — "
                 "this is where the user's reference data and sample data live on "
                 "the ZA-Wits-Core cluster"
             )
 
     def test_params_wits_json_workflow_is_set(self):
-        """params-wits.json must declare a workflow parameter."""
-        data = self._read_json()
+        """params-canoes-wits.json must declare a workflow parameter."""
+        data = self._read_json('params-canoes-wits.json')
         assert 'workflow' in data, (
-            "params-wits.json must specify which workflow to run via the 'workflow' key"
+            "params-canoes-wits.json must specify which workflow to run via the 'workflow' key"
         )
