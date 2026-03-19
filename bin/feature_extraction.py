@@ -256,6 +256,12 @@ _CALLER_FILENAME_PATTERNS = [
     ('indelible', re.compile(r'INDELIBLE', re.IGNORECASE)),
 ]
 
+# All CNV callers supported by this pipeline.  Running all seven callers
+# produces fully-populated is_{caller} and qual_norm_{caller} columns.
+# Fewer callers are accepted (features for absent callers are NaN / 0);
+# see the module docstring for per-feature requirements.
+SUPPORTED_CALLERS = tuple(name for name, _ in _CALLER_FILENAME_PATTERNS)
+
 
 def _caller_order_from_survivor_header(vcf_header):
     """Infer SUPP_VEC bit-to-caller mapping from SURVIVOR ##SAMPLE header lines.
