@@ -1,0 +1,13 @@
+{
+    "workflow": "xhmm",
+    "outdir": "./results",
+
+    "bind_paths":      "/dataB/aux,/dataG/ddd,/dataG/ddd-2023,/home/ywolberg",
+    "runOptions":      "",
+
+    "samplesheet_bams": "/dataG/ddd/samplesheet.tsv",
+    "ref":              "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.fna",
+    "probes":           "/dataB/aux/targets/targets.bed",
+    "xhmm_conf":        "/dataB/aux/xhmm/xhmm_params.txt",
+    "xhmm_batch_size":  50
+}

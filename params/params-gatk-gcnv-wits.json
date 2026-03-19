@@ -1,0 +1,17 @@
+{
+    "workflow": "gcnv",
+    "outdir": "./results",
+
+    "bind_paths": "/dataB/aux,/dataG/ddd,/dataG/ddd-2023,/home/ywolberg",
+    "runOptions": "",
+
+    "samples_path":   "/dataG/ddd/**/*.bam",
+    "fasta":          "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.fna",
+    "fai":            "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.fna.fai",
+    "dict":           "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.dict",
+    "exome_targets":  "/dataB/aux/targets/exome_targets.interval_list",
+    "bin_length":     0,
+    "padding":        250,
+    "is_wgs":         false,
+    "scatter_count":  5000
+}
