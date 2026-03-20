@@ -33,8 +33,9 @@ def gather_vcfs() {
     def ch = Channel.empty()
     def dir_count = 0
     
-    // Helper closure to reliably extract the sample ID from various caller filenames
-    def get_id = { f -> f.name.replaceAll(/_(CANOES|CLAMMS|XHMM|CNVKIT|GCNV|DRAGEN|INDELIBLE).*/, '').replaceAll(/\.vcf(\.gz)?$/i, '') }
+    // Helper closure to reliably extract the sample ID from various caller filenames.
+    // Also handles DRAGEN Germline Enrichment outputs named ${sample_id}.cnv.vcf.gz.
+    def get_id = { f -> f.name.replaceAll(/_(CANOES|CLAMMS|XHMM|CNVKIT|GCNV|DRAGEN|INDELIBLE).*/, '').replaceAll(/\.cnv\.vcf(\.gz)?$/i, '').replaceAll(/\.vcf(\.gz)?$/i, '') }
 
     if (params.get('canoes_dir', false))    { ch = ch.mix(Channel.fromPath(params.canoes_dir + "/*.vcf*").map { f -> [get_id(f), f] }); dir_count++ }
     if (params.get('clamms_dir', false))    { ch = ch.mix(Channel.fromPath(params.clamms_dir + "/*.vcf*").map { f -> [get_id(f), f] }); dir_count++ }
@@ -131,7 +132,7 @@ workflow RUN_DRAGEN {
         DRAGEN(cramPairs)
         if (params.get('truth_bed', false) && params.get('probes_bed', false)) {
             EVALUATE(
-                DRAGEN.out.annotated_vcfs.flatten(),
+                DRAGEN.out.sorted_vcf.flatten(),
                 file(params.truth_bed),
                 file(params.probes_bed),
                 'DRAGEN'
