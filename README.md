@@ -70,16 +70,41 @@ consensus and ML stages.
    annotating each record with `TOOL=CANOES`.
 
 #### XHMM (`--workflow xhmm`)
-1. **GROUP_BAMS** – Partition BAMs into groups (`xhmm_batch_size`) for parallel
-   GATK jobs.
-2. **GATK_DOC** – Run GATK `DepthOfCoverage` per group.
-3. **MERGE_GATK_DEPTHS** – Merge per-group depth files into a cohort-wide
-   depth matrix.
-4. **XHMM_NORMALIZE_COVERAGE** – Mean-centre and PCA-filter the depth matrix.
-5. **XHMM_DISCOVER_CNVS** – Call CNVs using an HMM on the normalised matrix.
-6. **FILTER_XHMM** – Remove calls that fail quality thresholds.
-7. **CONVERT_XHMM_TO_VCF** – Convert filtered XHMM output to VCF, annotating
-   each record with `TOOL=XHMM`.
+1. **GROUP_BAMS** – Partition the BAM list into groups of `xhmm_batch_size` for
+   parallel GATK `DepthOfCoverage` jobs.
+2. **GATK_DOC** – Run GATK `DepthOfCoverage` per BAM group to produce
+   per-group sample-interval depth summaries.
+3. **COMBINE_DOC** – Merge all per-group depth-of-coverage files into a single
+   cohort-wide read-depth matrix using `xhmm --mergeGATKdepths`.
+4. **CALC_GC_XHMM** – Annotate each target interval with its GC content using
+   GATK `AnnotateIntervals` and identify extreme-GC targets (GC < 10 % or
+   > 90 %) for exclusion.
+5. **FILTER_SAMPLES** – Remove targets that fail size or coverage thresholds and
+   samples that fail mean read-depth thresholds, then mean-centre the retained
+   per-target read depths using `xhmm --matrix --centerData`.
+6. **RUN_PCA** – Perform principal component analysis on the mean-centred depth
+   matrix using `xhmm --PCA` to capture systematic technical variation.
+7. **NORMALISE_PCA** – Remove the top PCA components (PVE_mean factor 0.7) from
+   the mean-centred data to produce a PCA-normalised read-depth matrix using
+   `xhmm --normalize`.
+8. **FILTER_ZSCORE** – Re-filter the PCA-normalised matrix to remove
+   high-variance targets (maxSdTargetRD > 30) and compute per-sample z-scores
+   using `xhmm --matrix --zScoreData`, emitting lists of excluded targets and
+   samples.
+9. **FILTER_RD** – Intersect the original read-depth matrix with the combined
+   target and sample exclusion lists produced by steps 5 and 8 so that the
+   original and normalised matrices cover identical loci and samples.
+10. **DISCOVER_CNVS** – Discover CNVs across the cohort by running XHMM's HMM
+    on the z-score matrix (`xhmm --discover`), using the original filtered
+    read depths as the reference.
+11. **GENOTYPE_CNVS** – Genotype all discovered CNVs in every sample using
+    `xhmm --genotype` and emit a combined multi-sample VCF.
+12. **SPLIT_VCF** – Split the multi-sample VCF into individual per-sample VCFs,
+    retaining only non-reference, non-missing genotype calls, and add the `chr`
+    prefix to chromosome names if absent.
+13. **FILTER_XHMM_CNVS** – Apply quality-score filters (EQ, SQ, and NDQ
+    thresholds) to each per-sample VCF using `bcftools filter` to remove
+    low-confidence CNV calls.
 
 #### CLAMMS (`--workflow clamms`)
 1. **GENERATE_WINDOWS** – Define fixed-size genomic windows over the target
@@ -128,27 +153,49 @@ consensus and ML stages.
    with `TOOL=CNVKIT`.
 
 #### DRAGEN (`--workflow dragen`)
-1. **UPLOAD_CRAM_FILES** – Upload CRAM/BAM files to the ICAv2 cloud platform.
-2. **GET_STATIC_FILES** – Retrieve reference genome and annotation data from
-   ICAv2.
-3. **START_ANALYSIS_BATCH** – Submit a DRAGEN Germline Enrichment batch job to
-   ICAv2.
-4. **CHECK_ANALYSIS_STATUS** – Poll until the cloud job completes.
-5. **DOWNLOAD_ANALYSIS_OUTPUT** – Retrieve the result VCFs, JSON reports, and
+1. **UPLOAD_CRAM_FILES** – Upload CRAM and CRAI files for each sample to the
+   ICAv2 cloud platform and record the resulting ICAv2 file IDs.
+2. **GET_STATIC_FILES** – Append the ICAv2 IDs of the reference genome and
+   annotation files to the combined upload manifest.
+3. **CHECK_FILE_STATUS** – Poll ICAv2 to confirm that every uploaded file is
+   available before submitting the analysis job.
+4. **START_ANALYSIS_BATCH** – Submit a DRAGEN Germline Enrichment batch job to
+   ICAv2 using the verified file manifest.
+5. **CHECK_ANALYSIS_STATUS** – Poll ICAv2 until the DRAGEN analysis job reaches
+   a terminal state (succeeded or failed).
+6. **DOWNLOAD_ANALYSIS_OUTPUT** – Retrieve the result VCFs, JSON reports, and
    BAMs from ICAv2.
-6. **DELETE_DATA** – Remove temporary files from the ICAv2 platform.
-7. **ADD_DRAGEN_TOOL_ANNOTATION** – Annotate each VCF record with
-   `TOOL=DRAGEN`.
+7. **DELETE_DATA** – Remove temporary CRAM files and the output folder from
+   ICAv2 to avoid storage costs.
+8. **ADD_DRAGEN_TOOL_ANNOTATION** – Annotate each downloaded VCF record with
+   `TOOL=DRAGEN` in the INFO field.
 
 #### InDelible (`--workflow indelible`)
-1. **EXTRACT_DISCORDANT_READS** – Extract split-read evidence from each CRAM.
-2. **RUN_SPLIT_ALIGNMENT** – Re-align split reads to the reference.
-3. **RUN_ANNOTATE** – Run `indelible.py annotate` to attach gene, MAF, and
-   database annotations (trio mode: proband, mother, father).
-4. **FILTER_INDELIBLE** – Remove low-quality or common-variant calls using
-   population-frequency thresholds.
-5. **CONVERT_INDELIBLE_TO_VCF** – Convert the filtered TSV to VCF, annotating
-   each record with `TOOL=INDELIBLE`.
+1. **RUN_FETCH** – Extract split and soft-clipped reads from each CRAM/BAM file
+   using `indelible.py fetch` to collect per-read evidence for indel events.
+2. **RUN_AGGREGATE** – Aggregate per-read split-read information to a
+   position-level view of the data using `indelible.py aggregate`, combining
+   BAM alignment context and clipped-read evidence.
+3. **RUN_SCORE** – Score each candidate position based on read information and
+   local sequence context using `indelible.py score`.
+4. **RUN_DATABASE** – Construct a cohort-wide allele-frequency and breakpoint
+   database from all scored files using `indelible.py database`, providing the
+   population-level context required for annotation.
+5. **RUN_ANNOTATE** – Enrich each scored file with gene and exon annotations
+   and merge in allele-frequency and breakpoint database results using
+   `indelible.py annotate`.
+6. **RUN_DENOVO_TRIO** – Identify de novo indel mutations in complete trios
+   (proband, mother, father) using `indelible.py denovo` with both parental
+   BAMs.
+7. **RUN_DENOVO_MOM** – Identify de novo mutations when only the mother's BAM
+   is available.
+8. **RUN_DENOVO_DAD** – Identify de novo mutations when only the father's BAM
+   is available.
+9. **FILTER_INDELIBLE** – Remove low-confidence calls by applying
+   population-frequency thresholds on the allele-frequency (`AF_freq`) and
+   breakpoint-frequency (`BP_freq`) columns of the annotated TSV.
+10. **CONVERT_INDELIBLE_TO_VCF** – Convert the filtered TSV to VCF format using
+    `indelible_tsv_to_vcf.py`, annotating each record with `TOOL=INDELIBLE`.
 
 ---
 
