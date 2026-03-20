@@ -290,6 +290,27 @@ class TestDragenAnnotationCnvVcfGzNaming:
             "sample_name to support DRAGEN Germline Enrichment output naming"
         )
 
+    def test_find_targets_only_cnv_vcf_gz(self, dragen_text):
+        """find must target only *.cnv.vcf.gz, not all VCF files.
+
+        The DRAGEN Germline Enrichment output directory contains many VCF files
+        (clean_CNVs.vcf, filtered_output.vcf, filtered_output_20.vcf, etc.).
+        Only the primary CNV VCF – ${sample_id}.cnv.vcf.gz – should be
+        INFO-tagged and fed into the normalisation chain.
+        """
+        process_body = _extract_process(dragen_text, 'ADD_DRAGEN_TOOL_ANNOTATION')
+        assert process_body is not None, \
+            "ADD_DRAGEN_TOOL_ANNOTATION process not found in modules-icav2-dragen.nf"
+        assert '*.cnv.vcf.gz' in process_body, (
+            "ADD_DRAGEN_TOOL_ANNOTATION must use find -name '*.cnv.vcf.gz' to target "
+            "only the primary CNV VCF produced by DRAGEN Germline Enrichment"
+        )
+        # Ensure the broad patterns that would pick up clean_CNVs.vcf etc. are gone
+        assert '-name "*.vcf"' not in process_body and "-name '*.vcf'" not in process_body, (
+            "ADD_DRAGEN_TOOL_ANNOTATION must NOT use find -name '*.vcf'; "
+            "this would match clean_CNVs.vcf, filtered_output.vcf, etc."
+        )
+
 
 # ---------------------------------------------------------------------------
 # 7. Full naming-convention chain: _DRAGEN.normalised.vcf.gz

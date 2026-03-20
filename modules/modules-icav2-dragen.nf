@@ -636,7 +636,7 @@ process ADD_DRAGEN_TOOL_ANNOTATION {
             -O z -o "\${sample_name}_DRAGEN.annotated.vcf.gz"
 
         rm -f "\${sample_name}_tool_annot.bed.gz" "\${sample_name}_tool_annot.bed.gz.tbi"
-    done < <(find ${downloadPath} -type f \\( -name "*.vcf.gz" -o -name "*.vcf" \\) 2>/dev/null || true)
+    done < <(find ${downloadPath} -type f -name "*.cnv.vcf.gz" 2>/dev/null || true)
 
     if [ \$found -eq 0 ]; then
         echo "No VCF files found in ${downloadPath}. Skipping annotation."
