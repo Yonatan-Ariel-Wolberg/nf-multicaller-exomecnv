@@ -53,8 +53,12 @@ consensus and ML stages.
    produce per-batch read-count matrices.
 4. **MERGE_READ_COUNTS** – Merge per-batch matrices into a single cohort-wide
    read-count matrix.
-5. **RUN_CANOES** – Apply GC correction and PCA normalisation (R), then call
-   CNVs with quality scores (Q_SOME, Q_EXACT).
+5. **RUN_CANOES** – Normalise read counts by mean coverage, select and weight
+   reference samples using non-negative least squares (NNLS), estimate
+   per-probe variance with a GAM (GC content as covariate), compute Negative
+   Binomial emission probabilities for deletion/normal/duplication states, and
+   call CNVs with the Viterbi algorithm; Phred-scaled quality scores (Q_SOME,
+   Q_EXACT) are produced via the forward–backward algorithm.
 6. **FILTER_CANOES_CNVS** – Apply quality thresholds to remove low-confidence
    calls.
 7. **CONVERT_CANOES_TO_VCF** – Convert the filtered CSV output to VCF format,
@@ -295,7 +299,7 @@ Each workflow is run by providing `--workflow <name>` along with a params file. 
 The individual callers should be run first. Their VCF outputs feed into the consensus modules (SURVIVOR / Truvari).
 
 ```bash
-# CANOES — exome CNV caller using read-depth and PCA normalisation
+# CANOES — exome CNV caller using read-depth, NNLS reference weighting and Negative Binomial HMM
 nextflow run main.nf --workflow canoes -params-file params/params-canoes.json
 
 # XHMM — exome CNV caller using GATK depth-of-coverage and PCA
@@ -441,8 +445,9 @@ Running a single `multicov` job over thousands of BAMs at once exhausts both
 memory and file-descriptor limits.  The pipeline therefore splits the BAM list
 into fixed-size batches (`canoes_batch_size`) and runs one `multicov` job per
 batch per chromosome; the per-batch matrices are then merged into a single
-cohort-wide matrix **before** the CANOES R script performs GC correction and
-PCA normalisation.  The batch size therefore controls **only parallelism and
+cohort-wide matrix **before** the CANOES R script normalises read counts,
+selects reference samples via NNLS, and calls CNVs using a Negative Binomial
+HMM.  The batch size therefore controls **only parallelism and
 memory use**, not normalisation accuracy — every sample contributes to the
 final normalisation regardless of batch size.
 
@@ -504,7 +509,7 @@ will be reduced.
 
 | Caller | Normalisation method | Recommended minimum | Notes |
 |--------|---------------------|--------------------:|-------|
-| **CANOES** | GC correction + PCA | 30 | PCA becomes unreliable below ~20 samples; 30+ recommended for typical exome panels |
+| **CANOES** | Mean-coverage normalisation + NNLS reference weighting + Negative Binomial HMM | 30 | NNLS reference-panel quality degrades with very small cohorts; 30+ samples recommended for reliable reference weighting |
 | **XHMM** | Mean-centering + PCA | 30 | XHMM's own filters may exclude all targets/samples with very small cohorts; 50+ strongly recommended |
 | **CLAMMS** | Nearest-neighbour reference panel | 30 | Nearest-neighbour selection quality degrades when the reference pool is small |
 | **GATK-gCNV** | Probabilistic cohort model | 30 | The Broad recommends ≥ 30 samples for the COHORT mode model to be well-calibrated |
