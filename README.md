@@ -242,19 +242,122 @@ The feature-extraction stage transforms the merged consensus VCF into a
 structured feature matrix suitable for machine learning.
 
 1. **EXTRACT_FEATURES** (`bin/feature_extraction.py`) – For each variant in
-   the merged VCF, compute ~40 features including:
-   - **Structural**: chromosome, size, GC content, mappability score.
-   - **Concordance**: number of callers detecting the variant
-     (`n_callers_detected`).
-   - **Per-caller quality**: normalised quality score for each supported caller
-     (`qual_norm_canoes`, `qual_norm_xhmm`, etc.).
-   - **Read-depth statistics**: log2-ratio (L2R) mean, median, and standard
-     deviation computed from a supplied BAM and reference FASTA.
-   - **Probe counts**: total probes overlapping the variant and number of
-     flanking probes.
+   the merged VCF, compute ~40 features drawn from multiple input sources
+   (see the table below).
 
 The output is a per-sample TSV (`{sample}_features.tsv`) for use in training
 and prediction.
+
+#### Feature table
+
+The table below lists every column written to the feature matrix.
+The **Used in training** column reflects which columns are retained by
+`bin/train_xgboost.py` (non-numeric and pure identifier columns
+`sample_id`, `chrom`, and `cnv_type` are dropped before model fitting;
+`start` and `end` are numeric and therefore kept).
+
+**Structural / location features**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `chrom` | Chromosome name (string, e.g. `chr1`) | Merged SURVIVOR/Truvari VCF | No (identifier) |
+| `start` | CNV start position (0-based) | Merged SURVIVOR/Truvari VCF | Yes |
+| `end` | CNV end position | Merged SURVIVOR/Truvari VCF | Yes |
+| `chrom_encoded` | Chromosome as integer: autosomes 1–22, X→23, Y→24, other→0 | Derived from `chrom` | Yes |
+| `cnv_size` | CNV length in base-pairs | Derived from `start`/`end` | Yes |
+| `size_label` | Ordinal size-bin (1–12) matching CN-Learn's `SIZE_LABEL` scheme | Derived from `cnv_size` | Yes |
+| `cnv_type` | CNV type indicator: 1 = DUP, 0 = DEL/other | Merged SURVIVOR/Truvari VCF | No (non-numeric string in some formats) |
+
+**Concordance**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `concordance` | Number of callers supporting this event | Merged SURVIVOR/Truvari VCF (`SUPP` INFO field or `MatchId` counts) | Yes |
+
+**Per-caller support flags**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `is_canoes` | 1 if CANOES called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+| `is_clamms` | 1 if CLAMMS called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+| `is_xhmm` | 1 if XHMM called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+| `is_gatk_gcnv` | 1 if GATK-gCNV called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+| `is_cnvkit` | 1 if CNVkit called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+| `is_dragen` | 1 if DRAGEN called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+| `is_indelible` | 1 if INDELIBLE called this event, else 0 | Merged VCF `SUPP_VEC` / `TOOL` INFO field | Yes |
+
+**Per-caller normalised quality scores**
+
+Raw caller-native scores are converted to a common 0–100 scale by
+`bin/normalise_cnv_caller_quality_scores.py` before feature extraction.
+The conversion formula for each caller is:
+
+| Caller | Raw score | Conversion |
+|---|---|---|
+| CANOES | `Q_SOME` (FORMAT) | `min(100, 100 × Q_SOME / 80)` |
+| CLAMMS | `Q_SOME` (FORMAT) | `min(100, 100 × Q_SOME / 500)` |
+| XHMM | `SQ` (FORMAT) | `min(100, 100 × SQ / 60)` |
+| GATK-gCNV | `QS` (FORMAT) | `min(100, 100 × QS / threshold)` |
+| CNVkit | `CNQ` (FORMAT) | `min(100, 100 × CNQ / 20)` |
+| DRAGEN | native `QUAL` | linear rescaling to 0–100 |
+| INDELIBLE | synthetic Phred | `SR_TOTAL × (AVG_MAPQ / 60) × 100` |
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `qual_norm_canoes` | QUAL_norm score for CANOES (0–100) | Normalised CANOES VCF (`QUAL` field) | Yes |
+| `qual_norm_clamms` | QUAL_norm score for CLAMMS (0–100) | Normalised CLAMMS VCF (`QUAL` field) | Yes |
+| `qual_norm_xhmm` | QUAL_norm score for XHMM (0–100) | Normalised XHMM VCF (`QUAL` field) | Yes |
+| `qual_norm_gatk_gcnv` | QUAL_norm score for GATK-gCNV (0–100) | Normalised GATK-gCNV VCF (`QUAL` field) | Yes |
+| `qual_norm_cnvkit` | QUAL_norm score for CNVkit (0–100) | Normalised CNVkit VCF (`QUAL` field) | Yes |
+| `qual_norm_dragen` | QUAL_norm score for DRAGEN (0–100) | Normalised DRAGEN VCF (`QUAL` field) | Yes |
+| `qual_norm_indelible` | QUAL_norm score for INDELIBLE (0–100) | Normalised INDELIBLE VCF (`QUAL` field) | Yes |
+
+**Aggregate quality summaries**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `max_qual_norm` | Maximum QUAL_norm across all callers supporting this event | Derived from per-caller normalised VCFs | Yes |
+| `mean_qual_norm_supported` | Mean QUAL_norm across callers that support this event (NaN when concordance = 0) | Derived from per-caller normalised VCFs | Yes |
+
+**Genomic annotations**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `n_probes` | Number of capture-target probes overlapping the CNV (NaN if no BED supplied) | Capture-target BED file | Yes |
+| `n_probes_flank` | Number of capture-target probes in the flanking region (NaN if no BED supplied) | Capture-target BED file | Yes |
+| `rd_ratio` | Mean read depth inside the CNV divided by mean read depth in flanking regions (NaN if no BAM/CRAM supplied) | BAM/CRAM alignment file | Yes |
+| `gc_content` | GC nucleotide fraction of the CNV interval (NaN if no FASTA supplied) | Reference FASTA | Yes |
+| `mappability` | Weighted-mean mappability score over the CNV interval (NaN if no mappability file supplied) | Mappability BED file | Yes |
+
+**Probe-level log2-ratio statistics**
+
+Computed per capture probe from BAM read depths normalised against the flanking-probe baseline.
+All three features are NaN when the capture BED or BAM/CRAM is absent.
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `l2r_mean` | Mean log2(probe depth / flanking baseline) across CNV probes; negative for DEL, positive for DUP | BAM/CRAM + capture-target BED | Yes |
+| `l2r_dev` | Variance (not standard deviation) of per-probe log2 ratios within the CNV; high values indicate noisy or false calls | BAM/CRAM + capture-target BED | Yes |
+| `l2r_flank_diff` | `l2r_mean` minus the mean flanking-probe log2 ratio; captures deviation from the immediate neighbourhood | BAM/CRAM + capture-target BED | Yes |
+
+**Caller-specific secondary INFO metrics**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `xhmm_rd` | XHMM read-depth Z-score (NaN if XHMM not run) | Normalised XHMM VCF (`RD` INFO field) | Yes |
+| `cnvkit_weight` | CNVkit bin weight (NaN if CNVkit not run) | Normalised CNVkit VCF (`WEIGHT` INFO field) | Yes |
+| `cnvkit_log2` | CNVkit log2 copy-ratio (NaN if CNVkit not run) | Normalised CNVkit VCF (`LOG2` INFO field) | Yes |
+| `dragen_sm` | DRAGEN sample median (NaN if DRAGEN not run) | Normalised DRAGEN VCF (`SM` INFO field) | Yes |
+| `dragen_sd` | DRAGEN sample standard deviation (NaN if DRAGEN not run) | Normalised DRAGEN VCF (`SD` INFO field) | Yes |
+
+**INDELIBLE split-read metrics**
+
+| Feature | Description | Source file / input | Used in training |
+|---|---|---|---|
+| `total_sr` | Total split-read count supporting the event (NaN if INDELIBLE not run) | INDELIBLE counts TSV | Yes |
+| `sr_entropy` | Shannon entropy of split-read positions (NaN if INDELIBLE not run) | INDELIBLE counts TSV | Yes |
+| `mapq_avg` | Average mapping quality of split reads (NaN if INDELIBLE not run) | INDELIBLE counts TSV | Yes |
+| `dual_split` | 1 if both breakends have split-read support, else 0 (NaN if INDELIBLE not run) | INDELIBLE counts TSV | Yes |
 
 ---
 
