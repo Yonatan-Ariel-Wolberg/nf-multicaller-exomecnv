@@ -33,6 +33,210 @@ This pipeline implements a robust bioinformatics workflow for analyzing genomic 
 
 Built with Nextflow for reproducible, scalable, and portable data analysis.
 
+## Workflow Steps
+
+The pipeline is structured as a sequence of modular stages.  Each stage can be
+run independently; in a typical end-to-end analysis the stages are executed in
+the order described below.
+
+### Step 1 — Individual CNV callers
+
+Seven independent CNV callers are provided.  Run one or more of them first to
+produce per-sample, per-caller VCF files that feed into the downstream
+consensus and ML stages.
+
+#### CANOES (`--workflow canoes`)
+1. **CALC_GC_CANOES** – Compute GC content per target region using GATK.
+2. **BATCH_BAMS** – Split the cohort BAM list into fixed-size batches
+   (`canoes_batch_size`) to bound memory and file-descriptor use.
+3. **GEN_READ_COUNTS** – Run `bedtools multicov` per batch and chromosome to
+   produce per-batch read-count matrices.
+4. **MERGE_READ_COUNTS** – Merge per-batch matrices into a single cohort-wide
+   read-count matrix.
+5. **RUN_CANOES** – Apply GC correction and PCA normalisation (R), then call
+   CNVs with quality scores (Q_SOME, Q_EXACT).
+6. **FILTER_CANOES_CNVS** – Apply quality thresholds to remove low-confidence
+   calls.
+7. **CONVERT_CANOES_TO_VCF** – Convert the filtered CSV output to VCF format,
+   annotating each record with `TOOL=CANOES`.
+
+#### XHMM (`--workflow xhmm`)
+1. **GROUP_BAMS** – Partition BAMs into groups (`xhmm_batch_size`) for parallel
+   GATK jobs.
+2. **GATK_DOC** – Run GATK `DepthOfCoverage` per group.
+3. **MERGE_GATK_DEPTHS** – Merge per-group depth files into a cohort-wide
+   depth matrix.
+4. **XHMM_NORMALIZE_COVERAGE** – Mean-centre and PCA-filter the depth matrix.
+5. **XHMM_DISCOVER_CNVS** – Call CNVs using an HMM on the normalised matrix.
+6. **FILTER_XHMM** – Remove calls that fail quality thresholds.
+7. **CONVERT_XHMM_TO_VCF** – Convert filtered XHMM output to VCF, annotating
+   each record with `TOOL=XHMM`.
+
+#### CLAMMS (`--workflow clamms`)
+1. **GENERATE_WINDOWS** – Define fixed-size genomic windows over the target
+   intervals.
+2. **SAMTOOLS_DOC** – Compute per-sample depth-of-coverage with `samtools`.
+3. **NORMALIZE_DOC** – Apply CLAMMS nearest-neighbour reference-panel
+   normalisation to each sample's coverage.
+4. **CREATE_PCA_DATA** – Run PCA on normalised coverages for sample QC.
+5. **GET_PICARD_QC_METRICS** / **GET_PICARD_MEAN_INSERT_SIZE** – Collect Picard
+   HS metrics and mean insert size per sample.
+6. **COMBINE_PICARD_QC_METRICS** – Aggregate per-sample Picard metrics into a
+   cohort-wide table.
+7. **CREATE_CUSTOM_REF_PANEL** – Build the cohort reference panel from all
+   normalised coverage files.
+8. **TRAIN_MODELS** – Train a per-sample CLAMMS model against the reference
+   panel.
+9. **CALL_CNVS** – Call CNVs per sample using the trained model.
+10. **FILTER_CLAMMS_CNVS** – Apply quality filters.
+11. **CONVERT_CLAMMS_TO_VCF** – Convert filtered BED output to VCF, annotating
+    each record with `TOOL=CLAMMS`.
+
+#### GATK-gCNV (`--workflow gcnv`)
+1. **GENERATE_PLOIDY_PRIORS** – Prepare cohort-level ploidy priors.
+2. **PREPROCESS_INTERVALS** – Standardise and bin the target intervals.
+3. **ANNOTATE_INTERVALS** – Attach GC-content and mappability annotations to
+   each interval.
+4. **COLLECT_READ_COUNTS** – Count reads per interval per sample.
+5. **FILTER_INTERVALS** – Remove low-quality or low-coverage intervals.
+6. **DETERMINE_PLOIDY_COHORT** – Estimate per-sample contig ploidy across the
+   cohort.
+7. **SCATTER_INTERVALS** – Partition intervals into shards for parallel calling
+   (`scatter_count`).
+8. **GERMLINE_CNV_CALLER_COHORT** – Run the GATK probabilistic cohort-mode CNV
+   model per shard.
+9. **POSTPROCESS_CALLS** – Merge shards, apply posterior filters, and produce
+   per-sample VCFs annotated with `TOOL=GCNV`.
+
+#### CNVkit (`--workflow cnvkit`)
+1. **GENERATE_ACCESS** – Identify accessible (mappable) regions of the genome.
+2. **AUTOBIN** – Optimise target and antitarget bin sizes for the cohort.
+3. **COVERAGE** – Compute per-sample target and antitarget coverage.
+4. **CREATE_POOLED_REFERENCE** – Build a pooled reference from all sample
+   coverages for GC and bias correction.
+5. **CALL_CNV** – Call copy number per sample against the pooled reference.
+6. **EXPORT_RESULTS** – Export calls to VCF and BED, annotating VCF records
+   with `TOOL=CNVKIT`.
+
+#### DRAGEN (`--workflow dragen`)
+1. **UPLOAD_CRAM_FILES** – Upload CRAM/BAM files to the ICAv2 cloud platform.
+2. **GET_STATIC_FILES** – Retrieve reference genome and annotation data from
+   ICAv2.
+3. **START_ANALYSIS_BATCH** – Submit a DRAGEN Germline Enrichment batch job to
+   ICAv2.
+4. **CHECK_ANALYSIS_STATUS** – Poll until the cloud job completes.
+5. **DOWNLOAD_ANALYSIS_OUTPUT** – Retrieve the result VCFs, JSON reports, and
+   BAMs from ICAv2.
+6. **DELETE_DATA** – Remove temporary files from the ICAv2 platform.
+7. **ADD_DRAGEN_TOOL_ANNOTATION** – Annotate each VCF record with
+   `TOOL=DRAGEN`.
+
+#### InDelible (`--workflow indelible`)
+1. **EXTRACT_DISCORDANT_READS** – Extract split-read evidence from each CRAM.
+2. **RUN_SPLIT_ALIGNMENT** – Re-align split reads to the reference.
+3. **RUN_ANNOTATE** – Run `indelible.py annotate` to attach gene, MAF, and
+   database annotations (trio mode: proband, mother, father).
+4. **FILTER_INDELIBLE** – Remove low-quality or common-variant calls using
+   population-frequency thresholds.
+5. **CONVERT_INDELIBLE_TO_VCF** – Convert the filtered TSV to VCF, annotating
+   each record with `TOOL=INDELIBLE`.
+
+---
+
+### Step 2 — VCF post-processing (all callers)
+
+After each caller produces its VCF, two shared processes are applied
+automatically:
+
+1. **BGZIP_SORT_INDEX_VCF** – Block-compress (`bgzip`), coordinate-sort
+   (`bcftools sort`), and index (`tabix`) the VCF, producing a sorted
+   `.vcf.gz` + `.tbi` pair.
+2. **NORMALISE_CNV_QUALITY_SCORES** – Rescale the caller-native quality score
+   to a standardised 0–100 scale and write it to the `QUAL` field, storing
+   the original score in the `OQ` FORMAT field.
+
+---
+
+### Step 3 — Consensus calling
+
+Once two or more callers have been run, their VCF directories are passed to one
+of the two consensus modules.  Both produce a per-sample consensus call set by
+merging the independent caller outputs.
+
+#### SURVIVOR (`--workflow survivor`)
+1. **RUN_SURVIVOR_MERGE (union)** – Merge all per-caller VCFs with
+   `min_support = 1` (any caller) and a merge distance of 1,000 bp to produce
+   a **union** call set containing every variant seen by at least one caller.
+2. **RUN_SURVIVOR_MERGE (intersection)** – Re-merge with `min_support = 2`
+   (two or more callers) to produce an **intersection** call set retaining only
+   variants supported by ≥ 2 callers.
+
+#### Truvari (`--workflow truvari`)
+1. **MERGE_VCFS** – Concatenate and sort all per-caller VCFs into a single
+   multi-sample VCF.
+2. **COLLAPSE_VCFS** – Run `truvari collapse` with size-reciprocal-overlap
+   (`pctsize = 0.5`) and breakpoint-overlap (`pctovl = 0.5`) thresholds to
+   cluster redundant calls and produce a single collapsed consensus VCF.
+
+---
+
+### Step 4 — Feature extraction (`--workflow feature_extraction`)
+
+The feature-extraction stage transforms the merged consensus VCF into a
+structured feature matrix suitable for machine learning.
+
+1. **EXTRACT_FEATURES** (`bin/feature_extraction.py`) – For each variant in
+   the merged VCF, compute ~40 features including:
+   - **Structural**: chromosome, size, GC content, mappability score.
+   - **Concordance**: number of callers detecting the variant
+     (`n_callers_detected`).
+   - **Per-caller quality**: normalised quality score for each supported caller
+     (`qual_norm_canoes`, `qual_norm_xhmm`, etc.).
+   - **Read-depth statistics**: log2-ratio (L2R) mean, median, and standard
+     deviation computed from a supplied BAM and reference FASTA.
+   - **Probe counts**: total probes overlapping the variant and number of
+     flanking probes.
+
+The output is a per-sample TSV (`{sample}_features.tsv`) for use in training
+and prediction.
+
+---
+
+### Step 5 — ML training (`--workflow train`)
+
+1. **TRAIN_XGBOOST** (`bin/train_xgboost.py`) – Load all
+   `*_features.tsv` files alongside a truth-label TSV, balance the training
+   set using SMOTE oversampling, and train an XGBoost gradient-boosted
+   classifier with stratified k-fold cross-validation.  Outputs:
+   - `cnv_model.json` – the serialised XGBoost model.
+   - `training_report.txt` – cross-validation precision, recall, and F1-score.
+
+---
+
+### Step 6 — Performance evaluation (`--workflow evaluate`)
+
+1. **VCF_TO_BED** (`bin/vcf_to_bed.py`) – Convert each per-sample VCF to a
+   5-column BED file (CHR, START, STOP, CNV_TYPE, SAMPLE_ID).
+2. **COMBINE_BEDS** – Concatenate all per-sample BED files into a single
+   cohort-wide call-set BED.
+3. **EVALUATE_CALLER** (`bin/evaluate_caller_performance.py`) – Compare the
+   unified call set against a truth BED at probe level and report precision,
+   sensitivity, and F1-score per caller.
+
+---
+
+### Step 7 — Standalone normalisation (`--workflow normalise`)
+
+For cohorts where per-caller VCFs already exist (e.g. produced outside this
+pipeline), the normalisation stage can be run in isolation:
+
+1. **NORMALISE_CNV_QUALITY_SCORES** – Accept a directory of raw caller VCFs
+   and a caller name (CANOES, CLAMMS, XHMM, GCNV, CNVKIT, DRAGEN, or
+   INDELIBLE), and produce bgzipped, sorted, indexed VCFs with standardised
+   quality scores.
+
+---
+
 ## Features
 
 - **Multi-caller approach**: Integrates multiple variant calling algorithms for robust variant detection
