@@ -21,6 +21,147 @@ SUPPORTED_CALLERS = ('canoes', 'clamms', 'xhmm', 'gatk_gcnv', 'cnvkit', 'dragen'
 MIN_CALLERS_FOR_TRAINING = 2
 
 
+def _normalise_cnv_type(value):
+    """Normalise CNV type values to 'DUP' / 'DEL' labels."""
+    if pd.isna(value):
+        return None
+    text = str(value).strip().upper()
+    if text in {'1', 'DUP', 'DUPLICATION'}:
+        return 'DUP'
+    if text in {'0', 'DEL', 'DELETION'}:
+        return 'DEL'
+    return text
+
+
+def _overlap_len(a_start, a_end, b_start, b_end):
+    return max(0, min(a_end, b_end) - max(a_start, b_start))
+
+
+def _load_probes(probes_bed):
+    probes = pd.read_csv(
+        probes_bed,
+        sep='\t',
+        header=None,
+        names=['chrom', 'start', 'end'],
+        usecols=[0, 1, 2],
+    )
+    probes['chrom'] = probes['chrom'].astype(str)
+    probes['start'] = probes['start'].astype(int)
+    probes['end'] = probes['end'].astype(int)
+    probes = probes.reset_index().rename(columns={'index': 'probe_id'})
+    return probes
+
+
+def _probe_ids_for_interval(chrom, start, end, probes_df):
+    hit = probes_df[
+        (probes_df['chrom'] == str(chrom))
+        & (probes_df['start'] < int(end))
+        & (probes_df['end'] > int(start))
+    ]
+    return set(hit['probe_id'].tolist())
+
+
+def merge_features_with_truth_labels(features_df, labels_df, probes_bed=None, min_shared_probes=1):
+    """Merge feature rows with truth labels.
+
+    Matching strategy:
+      1. Exact key match on sample/chrom/start/end/cnv_type_norm.
+      2. Optional fallback for unmatched rows: probe-overlap matching when
+         ``probes_bed`` is provided. CNV pairs are considered matches when they
+         share at least ``min_shared_probes`` probes on the same sample/chrom/type.
+    """
+    features = features_df.copy()
+    labels = labels_df.copy()
+    min_shared_probes = int(min_shared_probes)
+    if min_shared_probes < 1:
+        raise ValueError('min_shared_probes must be >= 1')
+
+    features['chrom'] = features['chrom'].astype(str)
+    labels['chrom'] = labels['chrom'].astype(str)
+    features['cnv_type_norm'] = features['cnv_type'].apply(_normalise_cnv_type)
+    labels['cnv_type_norm'] = labels['cnv_type'].apply(_normalise_cnv_type)
+
+    labels = labels.reset_index().rename(columns={'index': '_label_row_id'})
+    labels_subset = labels[
+        ['sample_id', 'chrom', 'start', 'end', 'cnv_type_norm', 'truth_label', '_label_row_id']
+    ]
+    merged = features.merge(
+        labels_subset,
+        on=['sample_id', 'chrom', 'start', 'end', 'cnv_type_norm'],
+        how='left',
+    )
+
+    exact_match_count = int(merged['truth_label'].notna().sum())
+    probe_match_count = 0
+
+    if probes_bed:
+        unmatched_idx = merged.index[merged['truth_label'].isna()].tolist()
+        if unmatched_idx:
+            probes = _load_probes(probes_bed)
+            used_exact_label_ids = set(
+                merged.loc[merged['truth_label'].notna(), '_label_row_id']
+                .dropna()
+                .astype(int)
+                .tolist()
+            )
+            probe_cache = {}
+
+            # Build candidate matches scored by shared probe count + bp overlap.
+            candidates = []
+            for f_idx in unmatched_idx:
+                feat = merged.loc[f_idx]
+                f_key = (feat['chrom'], int(feat['start']), int(feat['end']))
+                if f_key not in probe_cache:
+                    probe_cache[f_key] = _probe_ids_for_interval(
+                        feat['chrom'], feat['start'], feat['end'], probes
+                    )
+                f_probe_ids = probe_cache[f_key]
+                if not f_probe_ids:
+                    continue
+                lbl_candidates = labels[
+                    (labels['sample_id'] == feat['sample_id'])
+                    & (labels['chrom'] == feat['chrom'])
+                    & (labels['cnv_type_norm'] == feat['cnv_type_norm'])
+                    & (~labels['_label_row_id'].isin(used_exact_label_ids))
+                ]
+                for l_idx, lbl in lbl_candidates.iterrows():
+                    l_key = (lbl['chrom'], int(lbl['start']), int(lbl['end']))
+                    if l_key not in probe_cache:
+                        probe_cache[l_key] = _probe_ids_for_interval(
+                            lbl['chrom'], lbl['start'], lbl['end'], probes
+                        )
+                    l_probe_ids = probe_cache[l_key]
+                    shared_probes = len(f_probe_ids & l_probe_ids)
+                    if shared_probes < min_shared_probes:
+                        continue
+                    bp_overlap = _overlap_len(feat['start'], feat['end'], lbl['start'], lbl['end'])
+                    candidates.append((
+                        shared_probes,
+                        bp_overlap,
+                        f_idx,
+                        int(lbl['_label_row_id']),
+                        lbl['truth_label'],
+                    ))
+
+            # Greedy one-to-one assignment by best candidate score.
+            candidates.sort(reverse=True)
+            used_features = set()
+            used_labels = set(used_exact_label_ids)
+            for _, _, f_idx, label_row_id, truth_label in candidates:
+                if f_idx in used_features or label_row_id in used_labels:
+                    continue
+                merged.at[f_idx, 'truth_label'] = truth_label
+                merged.at[f_idx, '_label_row_id'] = label_row_id
+                used_features.add(f_idx)
+                used_labels.add(label_row_id)
+                probe_match_count += 1
+
+    merged = merged[merged['truth_label'].notna()].copy()
+    merged['truth_label'] = merged['truth_label'].astype(int)
+    merged = merged.drop(columns=['cnv_type_norm', '_label_row_id'], errors='ignore')
+    return merged, exact_match_count, probe_match_count
+
+
 def validate_min_callers(caller_columns):
     """Raise ValueError when fewer than MIN_CALLERS_FOR_TRAINING callers are present.
 
@@ -118,6 +259,15 @@ def main():
         help='TSV file with columns: sample_id, chrom, start, end, cnv_type, truth_label.',
     )
     parser.add_argument(
+        '--probes_bed', default=None,
+        help='Optional capture-target BED (CHR, START, END). When provided, '
+             'unmatched feature/truth rows are additionally matched by shared probes.',
+    )
+    parser.add_argument(
+        '--min_shared_probes', type=int, default=1,
+        help='Minimum number of shared probes required for fallback probe-overlap matching.',
+    )
+    parser.add_argument(
         '--output_model', default='cnv_model.json',
         help='Output path for the trained XGBoost model (XGBoost JSON format).',
     )
@@ -126,6 +276,8 @@ def main():
         help='Output path for the training metrics report.',
     )
     args = parser.parse_args()
+    if args.min_shared_probes < 1:
+        sys.exit('ERROR: --min_shared_probes must be >= 1')
 
     # ── Load all feature TSV files ────────────────────────────────────────────
     tsv_files = sorted(
@@ -156,16 +308,18 @@ def main():
         )
 
     # ── Merge features with truth labels ─────────────────────────────────────
-    merged = features_df.merge(
+    merged, exact_match_count, probe_match_count = merge_features_with_truth_labels(
+        features_df,
         labels_df[['sample_id', 'chrom', 'start', 'end', 'cnv_type', 'truth_label']],
-        on=['sample_id', 'chrom', 'start', 'end', 'cnv_type'],
-        how='inner',
+        probes_bed=args.probes_bed,
+        min_shared_probes=args.min_shared_probes,
     )
 
     if merged.empty:
         sys.exit(
             "ERROR: No matching records found after joining features with truth labels. "
-            "Check that sample_id / chrom / start / end / cnv_type values align."
+            "Check that sample_id / chrom / start / end / cnv_type values align. "
+            "If CNV coordinates differ, provide --probes_bed to enable probe-overlap matching."
         )
 
     y = merged['truth_label']
@@ -192,6 +346,8 @@ def main():
     with open(args.output_report, 'w') as fh:
         fh.write(f"Feature TSV files:         {len(tsv_files)}\n")
         fh.write(f"Training samples (calls):  {len(X)}\n")
+        fh.write(f"Exact key matches:         {exact_match_count}\n")
+        fh.write(f"Probe-overlap matches:     {probe_match_count}\n")
         fh.write(f"True CNVs  (label=1):      {n_pos}\n")
         fh.write(f"False CNVs (label=0):      {n_neg}\n")
         fh.write(f"Feature columns:           {list(X.columns)}\n")

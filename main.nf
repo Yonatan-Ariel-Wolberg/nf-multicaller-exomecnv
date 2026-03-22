@@ -263,10 +263,13 @@ workflow RUN_TRAIN {
         // Channel of individual *_features.tsv file paths (one per sample).
         features_tsv_ch
         // Single-element channel containing the path to the truth-labels TSV.
-        // Required columns: sample_id, chrom, start, end, truth_label
+        // Required columns: sample_id, chrom, start, end, cnv_type, truth_label
         truth_labels_ch
+        // Optional single-element channel containing probes BED.
+        // Used for probe-overlap fallback when feature/truth CNV coordinates differ.
+        probes_bed_ch
     main:
-        TRAIN(features_tsv_ch, truth_labels_ch)
+        TRAIN(features_tsv_ch, truth_labels_ch, probes_bed_ch)
 }
 
 workflow RUN_SURVIVOR_WITH_FEATURES {
@@ -452,13 +455,17 @@ workflow {
             // Required: --features_dir   (directory containing *_features.tsv files
             //                             produced by the feature_extraction workflow)
             //           --truth_labels   (TSV file with columns:
-            //                             sample_id, chrom, start, end, truth_label
+            //                             sample_id, chrom, start, end, cnv_type, truth_label
             //                             where truth_label=1 means true CNV)
+            // Optional: --probes_bed     (capture-target BED used to match rows by
+            //                             shared probes when coordinates differ)
             Channel.fromPath(params.features_dir + '/**/*_features.tsv')
                 .set { ch_features }
             Channel.value(file(params.truth_labels))
                 .set { ch_truth }
-            RUN_TRAIN(ch_features, ch_truth)
+            Channel.value(params.get('probes_bed', false) ? file(params.probes_bed) : [])
+                .set { ch_probes }
+            RUN_TRAIN(ch_features, ch_truth, ch_probes)
             break
 
         case['evaluate']:

@@ -12,6 +12,10 @@ This module trains an XGBoost classifier from feature matrices and truth labels,
 - `features_dir`
 - `truth_labels`
 
+## Optional parameters
+- `probes_bed` – capture-target BED used for fallback matching by shared probes.
+- `min_shared_probes` – minimum shared-probe count for fallback matching (default: `1`).
+
 ## Truth-label TSV requirements
 The `truth_labels` TSV must include:
 - `sample_id`
@@ -21,7 +25,9 @@ The `truth_labels` TSV must include:
 - `cnv_type`
 - `truth_label`
 
-Rows are matched by exact keys (`sample_id`, `chrom`, `start`, `end`, `cnv_type`).
+Rows are first matched by exact keys (`sample_id`, `chrom`, `start`, `end`, `cnv_type`).
+When `probes_bed` is provided, any still-unmatched rows are then matched by shared
+capture probes on the same `sample_id`, `chrom`, and `cnv_type`.
 
 ## Params template
 - `params/params-train.json`

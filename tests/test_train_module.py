@@ -105,6 +105,9 @@ class TestProcessIO:
     def test_input_truth_labels(self, nf_text):
         assert 'truth_labels' in nf_text
 
+    def test_input_optional_probes_bed(self, nf_text):
+        assert 'probes_bed' in nf_text
+
     def test_output_model(self, nf_text):
         assert 'cnv_model.json' in nf_text
 
@@ -133,6 +136,9 @@ class TestScriptBlock:
 
     def test_passes_truth_labels(self, nf_text):
         assert '--truth_labels' in nf_text
+
+    def test_supports_optional_probes_bed(self, nf_text):
+        assert '--probes_bed' in nf_text
 
     def test_passes_output_model(self, nf_text):
         assert '--output_model' in nf_text
@@ -164,6 +170,7 @@ class TestWorkflowTrain:
     def test_workflow_calls_process(self, nf_text):
         block = self._train_block(nf_text)
         assert 'TRAIN_XGBOOST' in block
+        assert 'probes_bed_ch' in block
 
     def test_workflow_has_emit(self, nf_text):
         block = self._train_block(nf_text)
@@ -226,11 +233,16 @@ class TestMainNfIntegration:
             "case['train'] must read --truth_labels param"
         )
 
+    def test_train_case_reads_optional_probes_bed(self, main_text):
+        block = self._train_case_block(main_text)
+        assert 'probes_bed' in block
+
     def test_train_case_calls_run_train(self, main_text):
         block = self._train_case_block(main_text)
         assert 'RUN_TRAIN' in block, (
             "case['train'] must call RUN_TRAIN"
         )
+        assert 'ch_probes' in block
 
     def test_train_in_help_message(self, main_text):
         assert '--workflow train' in main_text, (
