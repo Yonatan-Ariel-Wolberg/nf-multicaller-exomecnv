@@ -392,6 +392,15 @@ class TestReadmeTrainTruthLabelsDocumentation:
         assert '`cnv_type`' in readme_text
         assert '`truth_label`' in readme_text
 
-    def test_readme_documents_true_label_value(self, readme_text):
-        assert 'truth_label = 1' in readme_text
-        assert 'truth_label = 0' in readme_text
+    def test_readme_documents_truth_label_value(self, readme_text):
+        section_start = readme_text.find('Truth-label TSV requirements')
+        assert section_start != -1
+        heading_match = re.search(r'\n#{1,6}(\s|\n|$)', readme_text[section_start + 1:])
+        section_end = (
+            section_start + 1 + heading_match.start()
+            if heading_match else len(readme_text)
+        )
+        section = readme_text[section_start:section_end]
+        assert 'Example:' in section
+        assert re.search(r'truth_label\s*=\s*1', section)
+        assert re.search(r'truth_label\s*=\s*0', section)

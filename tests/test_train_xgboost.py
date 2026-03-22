@@ -14,7 +14,9 @@ Validates:
 
 import importlib.util
 import os
+import re
 import sys
+import ast
 
 import numpy as np
 import pandas as pd
@@ -49,6 +51,9 @@ def script_text():
 def tx():
     """Return the train_xgboost module."""
     return _import_module()
+
+EXPECTED_TRUTH_LABEL_COLUMNS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type', 'truth_label']
+EXPECTED_TRUTH_LABEL_JOIN_KEYS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type']
 
 
 # ===========================================================================
@@ -223,20 +228,45 @@ class TestPrepareTrainingDataLegacy:
 class TestTruthLabelContract:
 
     def test_truth_labels_required_columns_include_cnv_type(self, script_text):
-        required_tokens = [
-            "required_cols = {",
-            "'sample_id'",
-            "'chrom'",
-            "'start'",
-            "'end'",
-            "'cnv_type'",
-            "'truth_label'",
-        ]
-        for tok in required_tokens:
-            assert tok in script_text
+        module = ast.parse(script_text)
+        required_cols = None
+        main_fn = next(
+            (n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == 'main'),
+            None
+        )
+        assert main_fn is not None
+        for node in ast.walk(main_fn):
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == 'required_cols':
+                    required_cols = ast.literal_eval(node.value)
+                    break
+            if required_cols is not None:
+                break
+        assert isinstance(required_cols, set)
+        for col in EXPECTED_TRUTH_LABEL_COLUMNS:
+            assert col in required_cols
 
     def test_merge_uses_cnv_type_in_join_keys(self, script_text):
-        assert "on=['sample_id', 'chrom', 'start', 'end', 'cnv_type']" in script_text
+        module = ast.parse(script_text)
+        join_keys = None
+        main_fn = next(
+            (n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == 'main'),
+            None
+        )
+        assert main_fn is not None
+        for node in ast.walk(main_fn):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr == 'merge':
+                    for kw in node.keywords:
+                        if kw.arg == 'on':
+                            join_keys = ast.literal_eval(kw.value)
+                            break
+            if join_keys is not None:
+                break
+        assert join_keys is not None
+        assert join_keys == EXPECTED_TRUTH_LABEL_JOIN_KEYS
 
     def test_truth_labels_cli_help_mentions_cnv_type(self, script_text):
         assert 'sample_id, chrom, start, end, cnv_type, truth_label' in script_text
