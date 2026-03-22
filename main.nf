@@ -47,30 +47,30 @@ def REQUIRED_PARAMS_BY_WORKFLOW = [
     'evaluate': ['vcf_dir', 'caller', 'truth_bed', 'probes_bed'],
 ]
 
-def param_is_provided(param_name) {
+def is_param_set(param_name) {
     def value = params.get(param_name, null)
     if (value == null) return false
-    if (value instanceof CharSequence) return value.toString().trim()
-    return value
+    if (value instanceof CharSequence) return value.toString().trim().length() > 0
+    return true
 }
 
 def validate_required_params(workflow_name) {
     if (REQUIRED_PARAMS_BY_WORKFLOW.containsKey(workflow_name)) {
-        def missing = REQUIRED_PARAMS_BY_WORKFLOW[workflow_name].findAll { !param_is_provided(it) }
+        def missing = REQUIRED_PARAMS_BY_WORKFLOW[workflow_name].findAll { !is_param_set(it) }
         if (!missing.isEmpty()) {
             exit 1, "Error: Missing required parameter(s) for --workflow ${workflow_name}: ${missing.collect { '--' + it }.join(', ')}"
         }
     }
 
     if (['survivor', 'truvari', 'survivor_with_features', 'truvari_with_features'].contains(workflow_name)) {
-        def configured_caller_dirs = CALLER_DIR_PARAMS.findAll { param_is_provided(it) }
+        def configured_caller_dirs = CALLER_DIR_PARAMS.findAll { is_param_set(it) }
         if (configured_caller_dirs.size() < 2) {
             exit 1, "Error: --workflow ${workflow_name} requires at least TWO caller VCF directories. Configure at least 2 of: ${CALLER_DIR_PARAMS.collect { '--' + it }.join(', ')}"
         }
     }
 
     if (workflow_name == 'full') {
-        def missing_full = ['truth_labels'].findAll { !param_is_provided(it) }
+        def missing_full = ['truth_labels'].findAll { !is_param_set(it) }
         if (!missing_full.isEmpty()) {
             exit 1, "Error: Missing required parameter(s) for --workflow full: ${missing_full.collect { '--' + it }.join(', ')}"
         }
@@ -82,7 +82,7 @@ def validate_required_params(workflow_name) {
             ['cramFilePairsUploadPath'],
             ['crams'],
         ]
-        def configured_groups_count = full_caller_groups.count { keys -> keys.every { param_is_provided(it) } }
+        def configured_groups_count = full_caller_groups.count { keys -> keys.every { is_param_set(it) } }
         if (configured_groups_count < 2) {
             exit 1, "Error: --workflow full requires at least two configured caller input groups. Provide at least two of: (--samplesheet_bams + --fai), (--bams + --fasta + --targets + --refflat), (--samples_path + --fasta + --fai + --dict + --exome_targets), (--cramFilePairsUploadPath), (--crams)"
         }

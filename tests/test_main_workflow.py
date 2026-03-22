@@ -165,8 +165,12 @@ class TestRequiredParamsValidation:
 
     def test_required_params_map_includes_core_workflows(self, main_text):
         assert "def REQUIRED_PARAMS_BY_WORKFLOW" in main_text
-        for wf in ["canoes", "cnvkit", "gcnv", "normalise", "feature_extraction", "train", "evaluate"]:
-            assert f"'{wf}'" in main_text
+        assert "def REQUIRED_PARAMS_BY_WORKFLOW = [" in main_text
+        for wf in [
+            "indelible", "canoes", "xhmm", "clamms", "dragen",
+            "cnvkit", "gcnv", "normalise", "feature_extraction", "train", "evaluate",
+        ]:
+            assert f"'{wf}':" in main_text
 
     def test_required_params_error_message_mentions_workflow_and_missing_flags(self, main_text):
         assert "Missing required parameter(s) for --workflow ${workflow_name}" in main_text
@@ -183,6 +187,7 @@ class TestRequiredParamsValidation:
     def test_full_validation_requires_two_caller_groups(self, main_text):
         assert "--workflow full requires at least two configured caller input groups" in main_text
         assert "full_caller_groups" in main_text
+        assert "configured_groups_count < 2" in main_text
 
 
 # ===========================================================================
