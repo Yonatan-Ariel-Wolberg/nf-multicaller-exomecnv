@@ -5,6 +5,8 @@ nextflow.enable.dsl=2
 // PROCESSES FOR ICAv2 DRAGEN GERMLINE ENRICHMENT
 // =====================================================================================
 
+outdir = file(params.outdir, type: 'dir')
+
 // Inspired by a workflow by Reagan Cannell @ https://github.com/SBIMB/ica-elwazi/tree/main/nextflow_workflows/cram_input_dragen_ica_workflow
 
 process UPLOAD_CRAM_FILES {
@@ -599,7 +601,7 @@ process ADD_DRAGEN_TOOL_ANNOTATION {
     debug true
     tag "Add TOOL=DRAGEN annotation"
     label 'bcftools'
-    publishDir "${params.localDownloadPath}", mode: 'copy', overwrite: true
+    publishDir "${outdir}/out_DRAGEN/annotated_vcfs", mode: 'copy', overwrite: true
     cpus 1
 
     input:
@@ -650,7 +652,7 @@ process ADD_DRAGEN_TOOL_ANNOTATION {
 process BGZIP_SORT_INDEX_VCF {
     tag "${vcf_file.simpleName}"
     label 'bcftools'
-    publishDir "${params.localDownloadPath}", mode: 'copy', overwrite: true
+    publishDir "${outdir}/out_DRAGEN/sorted_vcfs", mode: 'copy', overwrite: true
 
     input:
     path vcf_file
@@ -672,7 +674,7 @@ process BGZIP_SORT_INDEX_VCF {
 process NORMALISE_CNV_QUALITY_SCORES {
     tag "${vcf.simpleName}"
     label 'pysam'
-    publishDir "${params.localDownloadPath}", mode: 'copy', overwrite: true
+    publishDir "${outdir}/out_DRAGEN/vcfs", mode: 'copy', overwrite: true
 
     input:
     path vcf

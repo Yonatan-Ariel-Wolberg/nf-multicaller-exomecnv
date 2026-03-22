@@ -1,5 +1,6 @@
 {
     "workflow":                     "dragen",
+    "outdir":                       "./results",
 
     "bind_paths":                   "/dataB/aux,/home/ywolberg,/dataG/ddd,/dataG/ddd-2023",
     "runOptions":                   "",

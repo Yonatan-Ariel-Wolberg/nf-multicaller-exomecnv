@@ -17,6 +17,7 @@ This module orchestrates ICAv2-based DRAGEN Germline Enrichment analysis: upload
 
 ## Required parameters
 - `workflow`: `dragen`
+- `outdir`
 - `projectId`
 - `pipelineId`
 - `userReference`
@@ -32,6 +33,9 @@ This module orchestrates ICAv2-based DRAGEN Germline Enrichment analysis: upload
 - `localDownloadPath`
 - `cramFilePairsUploadPath`
 - `icaUploadPath`
+
+`localDownloadPath` is used as the ICA download staging directory. Final DRAGEN
+module outputs are published under `${outdir}/out_DRAGEN/...` like other modules.
 
 ## Commonly used optional parameters
 - `maxUploadForks`
