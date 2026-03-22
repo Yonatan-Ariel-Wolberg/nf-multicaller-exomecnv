@@ -534,6 +534,19 @@ class TestParamsJsonFiles:
             f"feature_extraction.py how the VCFs were merged"
         )
 
+    def test_indelible_params_use_repo_config_yml(self):
+        """INDELIBLE params templates must point indelible_conf to params/config.yml."""
+        expected = "params/config.yml"
+        for filename in ("params-indelible.json", "params-indelible-wits.json"):
+            path = os.path.join(PARAMS_DIR, filename)
+            if not os.path.isfile(path):
+                pytest.skip(f"{filename} does not exist")
+            data = _load_params(filename)
+            assert data.get("indelible_conf") == expected, (
+                f"params/{filename} must set 'indelible_conf' to '{expected}' so "
+                "the required INDELIBLE config file in params/ is used by default"
+            )
+
 
 # ===========================================================================
 # 7. Nextflow DSL2 declaration

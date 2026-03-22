@@ -9,5 +9,5 @@
     "ref":             "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa",
     "fai":             "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai",
     "priors":          "/dataB/aux/indelible/priors.txt",
-    "indelible_conf":  "/dataB/aux/indelible/indelible_config.json"
+    "indelible_conf":  "params/config.yml"
 }

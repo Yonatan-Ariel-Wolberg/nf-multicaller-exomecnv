@@ -25,6 +25,8 @@ InDelible identifies structural insertion/deletion events from split-read eviden
 - `priors`
 - `indelible_conf`
 
+`params/config.yml` in this repository is required by the INDELIBLE workflow and is the default value used for `indelible_conf` in the params templates.
+
 ## Commonly used optional parameters
 - `fai`
 - `truth_bed`, `probes_bed` (only when running automatic evaluation in `main.nf`)
