@@ -25,7 +25,7 @@ MAIN_NF     = os.path.join(REPO_ROOT, 'main.nf')
 CONFIG_PATH = os.path.join(REPO_ROOT, 'nextflow.config')
 PARAMS_FILE = os.path.join(REPO_ROOT, 'params', 'params-train.json')
 SCRIPT_PATH = os.path.join(REPO_ROOT, 'bin', 'train_xgboost.py')
-TRAIN_DEF   = os.path.join(REPO_ROOT, 'bin', 'train.def')
+TRAIN_DEF = os.path.join(REPO_ROOT, 'bin', 'train.def')
 
 
 # ---------------------------------------------------------------------------
