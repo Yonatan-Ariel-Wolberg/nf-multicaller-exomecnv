@@ -293,6 +293,15 @@ class TestNextflowConfigIntegration:
         assert m, "withLabel: 'train' block not found"
         assert 'cpus' in m.group(1)
 
+    def test_train_label_uses_xgboost_biocontainer(self, config_text):
+        m = re.search(
+            r"withLabel:\s*'train'\s*\{([^}]+)\}",
+            config_text,
+            re.DOTALL,
+        )
+        assert m, "withLabel: 'train' block not found"
+        assert "docker://quay.io/biocontainers/xgboost:2.0.3--py310h4aa3b51_0" in m.group(1)
+
 
 # ===========================================================================
 # 7. params/params-train.json

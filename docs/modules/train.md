@@ -6,6 +6,9 @@ This module trains an XGBoost classifier from feature matrices and truth labels,
 ## Processes in this module
 1. **TRAIN_XGBOOST** – read `*_features.tsv`, join labels, train model, and write outputs.
 
+## Container
+- `withLabel: 'train'` uses `docker://quay.io/biocontainers/xgboost:2.0.3--py310h4aa3b51_0`.
+
 ## Required parameters
 - `workflow`: `train`
 - `outdir`
