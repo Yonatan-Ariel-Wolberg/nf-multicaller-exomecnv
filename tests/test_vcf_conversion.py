@@ -17,6 +17,7 @@ import pytest
 # Allow importing the scripts directly
 BIN_DIR = os.path.join(os.path.dirname(__file__), '..', 'bin')
 sys.path.insert(0, os.path.abspath(BIN_DIR))
+import clamms_bed_to_vcf as clamms_converter
 
 
 # ---------------------------------------------------------------------------
@@ -375,6 +376,47 @@ class TestCLAMMSBEDtoVCF:
                     f"CHROM field does not start with 'chr' in {fname}: "
                     f"got '{chrom}' (converter must add 'chr' when input lacks it)"
                 )
+
+    def test_chrX_chrY_records_are_retained(self, sample_file, tmp_path):
+        """Sex chromosome CNVs should be retained in output VCFs.
+
+        Uses mixed input formatting (`chrX` and `Y`) to verify the converter
+        both retains sex chromosomes and normalizes bare `Y` to `chrY`.
+        """
+        fai = tmp_path / "reference.fa.fai"
+        fai.write_text(
+            "chr1\t248956422\t112\t70\t71\n"
+            "chrX\t156040895\t0\t70\t71\n"
+            "chrY\t57227415\t0\t70\t71\n"
+        )
+
+        bed = tmp_path / "clamms_xy.bed"
+        rows = [
+            "chrX\t1000\t2000\tchrX:1000-2000\tSAMPLE1\tDEL\t1\t5\t600\t50\t30\t800\t25\t1200\t15\t1100\t20\t1300",
+            "Y\t5000\t8000\tY:5000-8000\tSAMPLE2\tDUP\t3\t8\t450\t40\t20\t4000\t15\t9000\t10\t5200\t12\t7800",
+        ]
+        bed.write_text("\n".join(rows) + "\n")
+
+        out = str(tmp_path / "out")
+        clamms_converter.process_clamms_data(str(bed), sample_file, str(fai), out)
+
+        sample1_header, sample1_data = _read_vcf_records(
+            os.path.join(out, "SAMPLE1_CLAMMS_output.vcf")
+        )
+        sample2_header, sample2_data = _read_vcf_records(
+            os.path.join(out, "SAMPLE2_CLAMMS_output.vcf")
+        )
+
+        assert sample1_data, "Expected SAMPLE1 VCF to retain chrX CNV record"
+        assert sample2_data, "Expected SAMPLE2 VCF to retain chrY CNV record"
+        assert any(line.startswith("#CHROM") for line in sample1_header)
+        assert any(line.startswith("#CHROM") for line in sample2_header)
+        sample1_fields = sample1_data[0].split("\t")
+        sample2_fields = sample2_data[0].split("\t")
+        assert len(sample1_fields) > 1, "Expected SAMPLE1 VCF data row to be tab-delimited"
+        assert len(sample2_fields) > 1, "Expected SAMPLE2 VCF data row to be tab-delimited"
+        assert sample1_fields[0] == "chrX", f"Expected CHROM field to be chrX, got {sample1_fields[0]}"
+        assert sample2_fields[0] == "chrY", f"Expected CHROM field to be chrY, got {sample2_fields[0]}"
 
 
 # ===========================================================================
