@@ -1,13 +1,13 @@
 #PATHS:
-ddg2p_bed: "/home/phelelani/projects/nadja/data/indelible/DDG2P_18VI2019.hg38.bed"
-ensembl_exons: "/home/phelelani/projects/nadja/data/indelible/hg38.ensemblv19.bed"
-random_forest_model: "/home/phelelani/projects/nadja/data/indelible/random_forest.17IX2019.pkl"
-exac_constraint: "/home/phelelani/projects/nadja/data/indelible/cleaned_exac_with_pLI_march16_anno.hg38.txt"
-hgnc_synonyms: "/home/phelelani/projects/nadja/data/indelible/hgnc_gene_synonyms.txt"
-hgnc_file: "/home/phelelani/projects/nadja/data/indelible/hgnc_genes.hg38.tsv"
+ddg2p_bed: "/dataG/ddd/data/resources/indelible/DDG2P_18VI2019.hg38.bed"
+ensembl_exons: "/dataG/ddd/data/resources/indelible/hg38.ensemblv19.bed"
+random_forest_model: "/dataG/ddd/data/resources/indelible/random_forest.17IX2019.pkl"
+exac_constraint: "/dataG/ddd/data/resources/indelible/cleaned_exac_with_pLI_march16_anno.hg38.txt"
+hgnc_synonyms: "/dataG/ddd/data/resources/indelible/hgnc_gene_synonyms.txt"
+hgnc_file: "/dataG/ddd/data/resources/indelible/hgnc_genes.hg38.tsv"
 
 #BLASTPATH:
-repeatdb: "/home/phelelani/projects/nadja/data/indelible/repeats.fasta"
+repeatdb: "/dataG/ddd/data/resources/indelible/repeats.fasta"
 
 # PARAMETERS:
 # -----------
