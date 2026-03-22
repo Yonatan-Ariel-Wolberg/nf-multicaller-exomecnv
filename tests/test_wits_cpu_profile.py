@@ -502,6 +502,8 @@ WITS_WORKFLOWS = [
 ]
 
 PARAMS_CANOES_WITS_JSON = os.path.join(REPO_ROOT, 'params', 'params-canoes-wits.json')
+DDD_UK_BAM_GLOB = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam,bam.bai}"
+DDD_AFRICA_INDELIBLE_DIRS = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}"
 
 
 class TestParamsWitsJson:
@@ -609,14 +611,12 @@ class TestParamsWitsJson:
 
     def test_wits_params_include_ddd_uk_bam_glob(self):
         """CNV workflows must point to the DDD-UK BAM/BAM.BAI location."""
-        expected = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam,bam.bai}"
-        assert self._read_json('params-cnvkit-wits.json').get('bams') == expected
-        assert self._read_json('params-gatk-gcnv-wits.json').get('samples_path') == expected
+        assert self._read_json('params-cnvkit-wits.json').get('bams') == DDD_UK_BAM_GLOB
+        assert self._read_json('params-gatk-gcnv-wits.json').get('samples_path') == DDD_UK_BAM_GLOB
 
     def test_wits_params_include_ddd_africa_indelible_dirs(self):
         """INDELIBLE must point to the DDD-AFRICA organized_data family directories."""
-        expected = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}"
-        assert self._read_json('params-indelible-wits.json').get('crams') == expected
+        assert self._read_json('params-indelible-wits.json').get('crams') == DDD_AFRICA_INDELIBLE_DIRS
 
     def test_wits_dragen_upload_glob_includes_uk_and_africa_locations(self):
         """DRAGEN upload glob must include DDD-UK and DDD-AFRICA BAM/CRAM roots."""
