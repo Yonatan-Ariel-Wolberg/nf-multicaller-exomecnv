@@ -209,7 +209,7 @@ class TestWorkflowTrain:
         assert 'roc_plot' in block
         assert 'pr_plot' in block
         assert 'shap_values' in block
-        assert 'shap_summary_plot' in block
+        assert 'shap_summary_bar_plot' in block
         assert 'shap_beeswarm_plot' in block
 
     def test_workflow_collects_features(self, nf_text):

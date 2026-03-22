@@ -51,7 +51,7 @@ process TRAIN_XGBOOST {
     path("roc_curve.tsv"),       emit: roc_data
     path("pr_curve.tsv"),        emit: pr_data
     path("shap_values.tsv"),     emit: shap_values
-    path("shap_summary_bar.svg"), emit: shap_summary_plot
+    path("shap_summary_bar.svg"), emit: shap_summary_bar_plot
     path("shap_summary_beeswarm.svg"), emit: shap_beeswarm_plot
 
     script:
@@ -102,6 +102,6 @@ workflow TRAIN {
         roc_data           = TRAIN_XGBOOST.out.roc_data
         pr_data            = TRAIN_XGBOOST.out.pr_data
         shap_values        = TRAIN_XGBOOST.out.shap_values
-        shap_summary_plot  = TRAIN_XGBOOST.out.shap_summary_plot
-        shap_beeswarm_plot = TRAIN_XGBOOST.out.shap_beeswarm_plot
+        shap_summary_bar_plot = TRAIN_XGBOOST.out.shap_summary_bar_plot
+        shap_beeswarm_plot    = TRAIN_XGBOOST.out.shap_beeswarm_plot
 }
