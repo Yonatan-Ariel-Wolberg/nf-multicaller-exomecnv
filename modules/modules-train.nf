@@ -20,7 +20,10 @@ outdir = file(params.outdir, type: 'dir')
 // Input tuple layout:
 //   path  features_tsv_files -- collected list of *_features.tsv files
 //   path  truth_labels       -- TSV with columns: sample_id, chrom, start, end,
-//                               truth_label  (1 = true CNV, 0 = false positive)
+//                               cnv_type, truth_label  (1 = true CNV, 0 = false positive)
+//   val   probes_bed         -- optional BED file path (CHR, START, END) used for
+//                               probe-overlap fallback matching when CNV
+//                               coordinates differ between features/truth labels
 //
 // Outputs:
 //   model  -- trained XGBoost model saved in JSON format (cnv_model.json)
@@ -34,6 +37,7 @@ process TRAIN_XGBOOST {
     input:
     path(features_tsv_files)
     path(truth_labels)
+    val(probes_bed)
 
     output:
     path("cnv_model.json"),      emit: model
@@ -42,11 +46,14 @@ process TRAIN_XGBOOST {
     script:
     // All feature TSV files are staged into the working directory by Nextflow.
     // The Python script globs *_features.tsv from the current directory ('.').
+    def probes_escaped = probes_bed ? probes_bed.toString().replace("'", "'\\''") : null
+    def probes_arg = probes_escaped ? "--probes_bed '${probes_escaped}'" : ""
     """
-    python ${projectDir}/bin/train_xgboost.py \\
-        --features_dir   '.' \\
-        --truth_labels   '${truth_labels}' \\
-        --output_model   cnv_model.json \\
+    python ${projectDir}/bin/train_xgboost.py \
+        --features_dir   '.' \
+        --truth_labels   '${truth_labels}' \
+        ${probes_arg} \
+        --output_model   cnv_model.json \
         --output_report  training_report.txt
     """
 }
@@ -63,9 +70,11 @@ workflow TRAIN {
         features_tsv_ch
         // Channel containing a single path: the truth-labels TSV.
         truth_labels_ch
+        // Optional channel containing a single probes BED path.
+        probes_bed_ch
 
     main:
-        TRAIN_XGBOOST(features_tsv_ch.collect(), truth_labels_ch)
+        TRAIN_XGBOOST(features_tsv_ch.collect(), truth_labels_ch, probes_bed_ch)
 
     emit:
         model  = TRAIN_XGBOOST.out.model

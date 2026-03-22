@@ -53,7 +53,9 @@ def tx():
     return _import_module()
 
 EXPECTED_TRUTH_LABEL_COLUMNS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type', 'truth_label']
-EXPECTED_TRUTH_LABEL_JOIN_KEYS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type']
+# merge_features_with_truth_labels joins on cnv_type_norm where cnv_type values
+# are normalized into canonical labels (e.g. 1/DUP -> DUP, 0/DEL -> DEL).
+EXPECTED_MERGE_KEYS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type_norm']
 
 
 # ===========================================================================
@@ -248,15 +250,15 @@ class TestTruthLabelContract:
         for col in EXPECTED_TRUTH_LABEL_COLUMNS:
             assert col in required_cols
 
-    def test_merge_uses_cnv_type_in_join_keys(self, script_text):
+    def test_merge_uses_normalized_cnv_type_in_join_keys(self, script_text):
         module = ast.parse(script_text)
         join_keys = None
-        main_fn = next(
-            (n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == 'main'),
+        merge_fn = next(
+            (n for n in module.body if isinstance(n, ast.FunctionDef) and n.name == 'merge_features_with_truth_labels'),
             None
         )
-        assert main_fn is not None
-        for node in ast.walk(main_fn):
+        assert merge_fn is not None
+        for node in ast.walk(merge_fn):
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                 if node.func.attr == 'merge':
                     for kw in node.keywords:
@@ -266,7 +268,80 @@ class TestTruthLabelContract:
             if join_keys is not None:
                 break
         assert join_keys is not None
-        assert join_keys == EXPECTED_TRUTH_LABEL_JOIN_KEYS
+        assert join_keys == EXPECTED_MERGE_KEYS
 
     def test_truth_labels_cli_help_mentions_cnv_type(self, script_text):
         assert 'sample_id, chrom, start, end, cnv_type, truth_label' in script_text
+
+    def test_cli_supports_probe_overlap_matching(self, script_text):
+        assert '--probes_bed' in script_text
+        assert '--min_shared_probes' in script_text
+
+    def test_reports_probe_overlap_matches(self, script_text):
+        assert 'Probe-overlap matches' in script_text
+
+
+# ===========================================================================
+# 7. probe-overlap fallback matching
+# ===========================================================================
+
+class TestProbeOverlapMatching:
+
+    def _features_df(self):
+        return pd.DataFrame({
+            'sample_id': ['S1', 'S2'],
+            'chrom': ['chr1', 'chr1'],
+            'start': [100, 500],
+            'end': [200, 600],
+            'cnv_type': [1, 0],
+            'concordance': [2, 2],
+            'is_canoes': [1, 1],
+            'is_clamms': [1, 1],
+        })
+
+    def _labels_df(self):
+        # S1 exact coordinate mismatch but same probes should match by fallback.
+        # S2 has identical chr1:500-600 coordinates in both DataFrames and is
+        # therefore counted as an exact-key match.
+        return pd.DataFrame({
+            'sample_id': ['S1', 'S2'],
+            'chrom': ['chr1', 'chr1'],
+            'start': [110, 500],
+            'end': [190, 600],
+            'cnv_type': ['DUP', 'DEL'],
+            'truth_label': [1, 0],
+        })
+
+    def _write_probe_bed(self, tmp_path):
+        bed = tmp_path / 'probes.bed'
+        bed.write_text(
+            "chr1\t50\t120\n"
+            "chr1\t130\t170\n"
+            "chr1\t180\t210\n"
+            "chr1\t500\t550\n"
+            "chr1\t550\t620\n"
+        )
+        return str(bed)
+
+    def test_probe_overlap_fallback_labels_unmatched_exact_rows(self, tx, tmp_path):
+        merged, exact_count, probe_count = tx.merge_features_with_truth_labels(
+            self._features_df(),
+            self._labels_df(),
+            probes_bed=self._write_probe_bed(tmp_path),
+            min_shared_probes=1,
+        )
+        assert len(merged) == 2
+        assert exact_count == 1
+        assert probe_count == 1
+
+    def test_min_shared_probes_threshold_is_enforced(self, tx, tmp_path):
+        merged, exact_count, probe_count = tx.merge_features_with_truth_labels(
+            self._features_df(),
+            self._labels_df(),
+            probes_bed=self._write_probe_bed(tmp_path),
+            min_shared_probes=4,
+        )
+        # only the exact S2 match remains when threshold is too strict for S1
+        assert len(merged) == 1
+        assert exact_count == 1
+        assert probe_count == 0

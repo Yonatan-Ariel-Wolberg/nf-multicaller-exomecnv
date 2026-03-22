@@ -46,14 +46,16 @@ Required minimum columns:
 
 ## 3) How features and labels are matched
 
-`train_xgboost.py` performs an **inner join** between features and truth labels on:
+`train_xgboost.py` first performs an exact match between features and truth labels on:
 - `sample_id`
 - `chrom`
 - `start`
 - `end`
 - `cnv_type`
 
-Only rows that match on all five keys are used for training.
+If `--probes_bed` is provided, unmatched rows are then matched by **shared capture
+probes** (same `sample_id`, `chrom`, and `cnv_type`) with a minimum overlap controlled
+by `--min_shared_probes` (default `1`).
 
 ## 4) What becomes `X` vs `y`
 
