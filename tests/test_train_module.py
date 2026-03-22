@@ -330,7 +330,7 @@ class TestNextflowConfigIntegration:
         assert m, "withLabel: 'train' block not found"
         assert "docker://quay.io/condaforge/mambaforge:24.9.2-0" in m.group(1)
 
-    def test_train_label_rejects_legacy_py27_xgboost_container(self, config_text):
+    def test_train_label_does_not_use_legacy_py27_xgboost_container(self, config_text):
         m = re.search(
             r"withLabel:\s*'train'\s*\{([^}]+)\}",
             config_text,
