@@ -64,4 +64,5 @@ After joining:
 
 So:
 - **Truth-label column:** `truth_label`
-- **Feature columns:** numeric feature columns from `*_features.tsv` (plus any numeric join columns that remain, such as `start`/`end`, if present in the merged numeric set).
+- **Feature columns:** numeric columns retained after dropping `sample_id`, `chrom`, and `cnv_type`.
+  - In the current implementation, numeric coordinate columns like `start` and `end` are retained and therefore can be part of `X`.

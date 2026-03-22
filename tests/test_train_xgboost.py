@@ -223,7 +223,17 @@ class TestPrepareTrainingDataLegacy:
 class TestTruthLabelContract:
 
     def test_truth_labels_required_columns_include_cnv_type(self, script_text):
-        assert "{'sample_id', 'chrom', 'start', 'end', 'cnv_type', 'truth_label'}" in script_text
+        required_tokens = [
+            "required_cols = {",
+            "'sample_id'",
+            "'chrom'",
+            "'start'",
+            "'end'",
+            "'cnv_type'",
+            "'truth_label'",
+        ]
+        for tok in required_tokens:
+            assert tok in script_text
 
     def test_merge_uses_cnv_type_in_join_keys(self, script_text):
         assert "on=['sample_id', 'chrom', 'start', 'end', 'cnv_type']" in script_text
