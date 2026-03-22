@@ -2,10 +2,10 @@
     "workflow": "indelible",
     "outdir": "./results",
 
-    "bind_paths":      "/dataB/aux,/dataG/ddd,/dataG/ddd-2023,/home/ywolberg",
+    "bind_paths":      "/dataB/aux,/home/ywolberg",
     "runOptions":      "",
 
-    "crams":           "/dataG/ddd/crams",
+    "crams":           "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}",
     "ref":             "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.fna",
     "fai":             "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.fna.fai",
     "priors":          "/dataB/aux/indelible/priors.txt",

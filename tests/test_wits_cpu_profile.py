@@ -547,17 +547,17 @@ class TestParamsWitsJson:
                 "can see an example of how to specify their data directories"
             )
 
-    def test_all_wits_params_files_bind_paths_contains_wits_dirs(self):
-        """Every params-*-wits.json bind_paths must include the standard Wits data dirs."""
+    def test_all_wits_params_files_bind_paths_contains_required_dirs(self):
+        """Every params-*-wits.json bind_paths must include required root mounts."""
         for wf in WITS_WORKFLOWS:
             filename = f'params-{wf}-wits.json'
             data = self._read_json(filename)
             bind_paths = data.get('bind_paths', '')
-            for expected_dir in ('/dataB/aux', '/dataG/ddd', '/dataG/ddd-2023', '/home/ywolberg'):
+            for expected_dir in ('/dataB/aux', '/home/ywolberg'):
                 assert expected_dir in bind_paths, (
                     f"{filename} bind_paths must include '{expected_dir}' — "
-                    "this is where the user's reference data and sample data live on "
-                    "the ZA-Wits-Core cluster"
+                    "this is where the reference data and DDD input roots are mounted "
+                    "on the Wits cluster"
                 )
 
     def test_all_wits_params_files_workflow_is_set(self):
@@ -597,15 +597,38 @@ class TestParamsWitsJson:
         )
 
     def test_params_wits_json_bind_paths_contains_wits_dirs(self):
-        """params-canoes-wits.json bind_paths must include the standard Wits data dirs."""
+        """params-canoes-wits.json bind_paths must include required root mounts."""
         data = self._read_json('params-canoes-wits.json')
         bind_paths = data.get('bind_paths', '')
-        for expected_dir in ('/dataB/aux', '/dataG/ddd', '/dataG/ddd-2023', '/home/ywolberg'):
+        for expected_dir in ('/dataB/aux', '/home/ywolberg'):
             assert expected_dir in bind_paths, (
                 f"params-canoes-wits.json bind_paths must include '{expected_dir}' — "
-                "this is where the user's reference data and sample data live on "
-                "the ZA-Wits-Core cluster"
+                "this is where the reference data and DDD input roots are mounted "
+                "on the Wits cluster"
             )
+
+    def test_wits_params_include_ddd_uk_bam_glob(self):
+        """CNV workflows must point to the DDD-UK BAM/BAM.BAI location."""
+        expected = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam,bam.bai}"
+        assert self._read_json('params-cnvkit-wits.json').get('bams') == expected
+        assert self._read_json('params-gatk-gcnv-wits.json').get('samples_path') == expected
+
+    def test_wits_params_include_ddd_africa_indelible_dirs(self):
+        """INDELIBLE must point to the DDD-AFRICA organized_data family directories."""
+        expected = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}"
+        assert self._read_json('params-indelible-wits.json').get('crams') == expected
+
+    def test_wits_dragen_upload_glob_includes_uk_and_africa_locations(self):
+        """DRAGEN upload glob must include DDD-UK and DDD-AFRICA BAM/CRAM roots."""
+        upload_glob = self._read_json('params-icav2-dragen-wits.json').get('cramFilePairsUploadPath', '')
+        assert "/home/ywolberg/DECIPHERING_DD_DATA/" in upload_glob
+        assert "DDD_UK_DATA/bams" in upload_glob
+        assert "DDD_UK_DATA/crams" in upload_glob
+        assert "DDD_AFRICA_DATA/batch_3/organized_data/Extended" in upload_glob
+        assert "DDD_AFRICA_DATA/batch_3/organized_data/Father" in upload_glob
+        assert "DDD_AFRICA_DATA/batch_3/organized_data/Mother" in upload_glob
+        assert "DDD_AFRICA_DATA/batch_3/organized_data/Proband" in upload_glob
+        assert ".{bam,bam.bai,cram,cram.crai}" in upload_glob
 
     def test_params_wits_json_workflow_is_set(self):
         """params-canoes-wits.json must declare a workflow parameter."""

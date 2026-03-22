@@ -2,10 +2,10 @@
     "workflow": "cnvkit",
     "outdir": "./results",
 
-    "bind_paths": "/dataB/aux,/dataG/ddd,/dataG/ddd-2023,/home/ywolberg",
+    "bind_paths": "/dataB/aux,/home/ywolberg",
     "runOptions": "",
 
-    "bams":      "/dataG/ddd/**/*.bam",
+    "bams":      "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam,bam.bai}",
     "fasta":     "/dataB/aux/GRCh38/GCA_000001405.15_GRCh38_full_analysis_set.fna",
     "targets":   "/dataB/aux/targets/targets.bed",
     "refflat":   "/dataB/aux/GRCh38/refFlat.txt",

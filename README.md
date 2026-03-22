@@ -197,16 +197,23 @@ nextflow run main.nf \
 
 ### Cluster-specific bind mounts
 
-The global `singularity.runOptions` in `nextflow.config` binds several Wits file-system paths into every container:
+The global `singularity.runOptions` in `nextflow.config` binds the paths listed
+in `params.bind_paths` into every container. For the Wits DDD datasets, use:
 
 ```
 -B /dataB/aux
--B /dataG/ddd
--B /dataG/ddd-2023
 -B /home/ywolberg
 ```
 
-Edit `params.runOptions` in `nextflow.config` (or pass `--runOptions` on the command line) if your data lives elsewhere on the cluster.
+Relevant Wits input globs used by the `params/*-wits.json` templates:
+
+- DDD-UK BAMs: `/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam,bam.bai}`
+- DDD-UK CRAMs: `/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/crams/**/*.{cram,cram.crai}`
+- DDD-AFRICA INDELIBLE family directories:
+  `/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}`
+
+Edit `params.runOptions` in `nextflow.config` (or pass `--runOptions` on the
+command line) if your data lives elsewhere on the cluster.
 
 ### GATK / Picard constraint
 
