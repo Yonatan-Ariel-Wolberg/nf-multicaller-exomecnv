@@ -8,6 +8,7 @@ This module trains an XGBoost classifier from feature matrices and truth labels,
 
 ## Container
 - `withLabel: 'train'` uses `docker://quay.io/biocontainers/xgboost:2.0.3--py310h4aa3b51_0`.
+- `quay.io/biocontainers/xgboost:0.6a2--py27_0` is not supported by this module (Python 2.7 / legacy XGBoost API).
 
 ## Required parameters
 - `workflow`: `train`

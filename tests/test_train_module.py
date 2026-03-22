@@ -330,6 +330,17 @@ class TestNextflowConfigIntegration:
         assert m, "withLabel: 'train' block not found"
         assert "docker://quay.io/biocontainers/xgboost:2.0.3--py310h4aa3b51_0" in m.group(1)
 
+    def test_train_label_rejects_legacy_py27_xgboost_container(self, config_text):
+        m = re.search(
+            r"withLabel:\s*'train'\s*\{([^}]+)\}",
+            config_text,
+            re.DOTALL,
+        )
+        assert m, "withLabel: 'train' block not found"
+        container_line = re.search(r"container\s*=\s*'([^']+)'", m.group(1))
+        assert container_line, "train label must define container assignment"
+        assert "xgboost:0.6a2--py27_0" not in container_line.group(1)
+
 
 # ===========================================================================
 # 7. params/params-train.json
