@@ -10,5 +10,5 @@
     "interval_list": "/dataG/ddd/data/resources/canoes/probes_sanger.interval_list",
     "mappability": "/dataB/aux/clamms/mappability.bed",
     "special_reg": "/dataB/aux/clamms/special_regions.bed",
-    "sexinfo": "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/sex_info.txt"
+    "sexinfo": "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/sex_info.txt"
 }

@@ -509,6 +509,11 @@ WITS_REF_FASTA = "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_d
 WITS_REF_FAI = "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai"
 WITS_TARGETS_BED = "/dataG/ddd/data/resources/canoes/probes_sanger.bed"
 WITS_TARGETS_INTERVAL_LIST = "/dataG/ddd/data/resources/canoes/probes_sanger.interval_list"
+DDD_UK_SAMPLESHEET = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/samplesheet.tsv"
+DDD_UK_BAM_GLOB = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/bams/**/*.{bam,bam.bai}"
+DDD_UK_CRAM_DIR = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/crams"
+DDD_AFRICA_SEXINFO = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/sex_info.txt"
+DDD_UK_SEXINFO = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/sex_info.txt"
 
 
 class TestParamsWitsJson:
@@ -615,7 +620,7 @@ class TestParamsWitsJson:
             )
 
     def test_wits_params_include_ddd_africa_for_joint_cnv_calling(self):
-        """DDD-AFRICA CRAM cohorts must be run jointly for CANOES/CLAMMS/XHMM/CNVkit/GATK-gCNV."""
+        """DDD-AFRICA BAM cohorts must be run jointly for CANOES/CLAMMS/XHMM/CNVkit/GATK-gCNV."""
         assert self._read_json('params-canoes-wits.json').get('samplesheet_bams') == DDD_AFRICA_SAMPLESHEET
         assert self._read_json('params-clamms-wits.json').get('samplesheet_bams') == DDD_AFRICA_SAMPLESHEET
         assert self._read_json('params-xhmm-wits.json').get('samplesheet_bams') == DDD_AFRICA_SAMPLESHEET
@@ -678,3 +683,48 @@ class TestParamsWitsJson:
         assert 'workflow' in data, (
             "params-canoes-wits.json must specify which workflow to run via the 'workflow' key"
         )
+
+
+class TestRegionalWitsExampleParams:
+    """Region-specific Wits example params must exist for DDD-AFRICA and DDD-UK."""
+
+    def _read_json(self, filename):
+        import json
+        path = os.path.join(REPO_ROOT, 'params', filename)
+        with open(path) as fh:
+            return json.load(fh)
+
+    def test_all_regional_wits_example_files_exist(self):
+        """Each Wits workflow must have ddd-africa and ddd-uk example params files."""
+        for wf in WITS_WORKFLOWS:
+            for region in ("ddd-africa", "ddd-uk"):
+                filename = f'params-{wf}-wits-{region}.json'
+                path = os.path.join(REPO_ROOT, 'params', filename)
+                assert os.path.isfile(path), (
+                    f"{filename} must exist as a region-specific example params file"
+                )
+
+    def test_ddd_africa_examples_point_to_ddd_africa_inputs(self):
+        """DDD-AFRICA examples should reference DDD_AFRICA_DATA paths where applicable."""
+        assert self._read_json('params-canoes-wits-ddd-africa.json').get('samplesheet_bams') == DDD_AFRICA_SAMPLESHEET
+        assert self._read_json('params-clamms-wits-ddd-africa.json').get('samplesheet_bams') == DDD_AFRICA_SAMPLESHEET
+        assert self._read_json('params-clamms-wits-ddd-africa.json').get('sexinfo') == DDD_AFRICA_SEXINFO
+        assert self._read_json('params-xhmm-wits-ddd-africa.json').get('samplesheet_bams') == DDD_AFRICA_SAMPLESHEET
+        assert self._read_json('params-cnvkit-wits-ddd-africa.json').get('bams') == DDD_AFRICA_BAM_GLOB
+        assert self._read_json('params-gatk-gcnv-wits-ddd-africa.json').get('samples_path') == DDD_AFRICA_BAM_GLOB
+        assert self._read_json('params-indelible-wits-ddd-africa.json').get('crams') == DDD_AFRICA_INDELIBLE_DIRS
+        assert "DDD_AFRICA_DATA/batch_3/organized_data/Proband" in self._read_json('params-icav2-dragen-wits-ddd-africa.json').get('cramFilePairsUploadPath', '')
+
+    def test_ddd_uk_examples_point_to_ddd_uk_inputs_only(self):
+        """DDD-UK examples should reference DDD_UK_DATA paths where applicable."""
+        assert self._read_json('params-canoes-wits-ddd-uk.json').get('samplesheet_bams') == DDD_UK_SAMPLESHEET
+        assert self._read_json('params-clamms-wits-ddd-uk.json').get('samplesheet_bams') == DDD_UK_SAMPLESHEET
+        assert self._read_json('params-clamms-wits-ddd-uk.json').get('sexinfo') == DDD_UK_SEXINFO
+        assert self._read_json('params-xhmm-wits-ddd-uk.json').get('samplesheet_bams') == DDD_UK_SAMPLESHEET
+        assert self._read_json('params-cnvkit-wits-ddd-uk.json').get('bams') == DDD_UK_BAM_GLOB
+        assert self._read_json('params-gatk-gcnv-wits-ddd-uk.json').get('samples_path') == DDD_UK_BAM_GLOB
+        assert self._read_json('params-indelible-wits-ddd-uk.json').get('crams') == DDD_UK_CRAM_DIR
+        upload_glob = self._read_json('params-icav2-dragen-wits-ddd-uk.json').get('cramFilePairsUploadPath', '')
+        assert "DDD_UK_DATA/bams" in upload_glob
+        assert "DDD_UK_DATA/crams" in upload_glob
+        assert "DDD_AFRICA_DATA" not in upload_glob

@@ -218,6 +218,11 @@ Relevant Wits input paths used by the `params/*-wits.json` templates:
 - DRAGEN upload roots:
   `/home/ywolberg/DECIPHERING_DD_DATA/{DDD_UK_DATA/bams,DDD_UK_DATA/crams,DDD_AFRICA_DATA/batch_3/organized_data/Proband}/**/*.{bam,bam.bai,cram,cram.crai}`
 
+Region-specific examples are also provided for every Wits module template:
+
+- DDD-AFRICA examples: `params/params-*-wits-ddd-africa.json`
+- DDD-UK examples: `params/params-*-wits-ddd-uk.json`
+
 The DDD files in `/home/ywolberg/DECIPHERING_DD_DATA/...` are symbolic links to
 `/dataG/ddd` and `/dataG/ddd-2023`, so both `/dataG` locations must be
 bind-mounted as well.
