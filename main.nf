@@ -34,6 +34,10 @@ def CALLER_DIR_PARAMS = [
 ]
 
 def extract_sample_id_from_vcf(f) {
+    // Extract bare sample ID from per-caller VCF names used across modules,
+    // including DRAGEN's ${sample_id}.cnv.vcf(.gz) convention.
+    // Ordering matters: strip caller suffix and VCF extensions first, then trim
+    // downstream ".sorted" / ".normalised" suffixes from intermediate filenames.
     return f.name
         .replaceAll(/_(CANOES|CLAMMS|XHMM|CNVKIT|GCNV|DRAGEN|INDELIBLE).*/, '')
         .replaceAll(/\.cnv\.vcf(\.gz)?$/i, '')
@@ -51,10 +55,12 @@ def infer_caller_from_vcf(f) {
     if (n.contains('_GCNV'))      return 'gatk_gcnv'
     if (n.contains('_DRAGEN') || n.contains('.CNV.')) return 'dragen'
     if (n.contains('_INDELIBLE')) return 'indelible'
-    return 'unknown'
+    error "Could not infer caller from VCF filename: ${f.name}"
 }
 
 def build_tool_vcfs_str(vcfs) {
+    // Build feature_extraction --tool_vcfs argument format:
+    // caller1=/path/a.vcf.gz,caller2=/path/b.vcf.gz,...
     return vcfs
         .collect { vcf -> "${infer_caller_from_vcf(vcf)}=${vcf}" }
         .join(',')
@@ -544,7 +550,7 @@ workflow {
                     .map { it -> [it.baseName, it] }.groupTuple(size: 2)
                     .map { id, files -> [id, files.find { it.extension == 'bam' }, files.find { it.extension == 'bai' }] }
                     .set { ch_bams_cnvkit }
-                def ch_bams_cnvkit_nonempty = ch_bams_cnvkit.ifEmpty { error "full workflow CNVkit step received no BAMs. Check --bams input/glob." }
+                def ch_bams_cnvkit_nonempty = ch_bams_cnvkit.ifEmpty { error "full workflow CNVkit step received no BAMs. Check the --bams parameter value matches existing BAM files." }
                 CNVKIT(
                     ch_bams_cnvkit_nonempty,
                     file(params.fasta),
@@ -613,7 +619,7 @@ workflow {
             }
 
             if (caller_vcf_channels.size() < 2) {
-                exit 1, "Error: full workflow requires at least two callable CNV inputs so consensus and model training can run. Provide input params for >=2 callers."
+                exit 1, "Error: full workflow requires at least two CNV caller inputs for consensus and model training. Please configure parameters for at least 2 callers."
             }
 
             def ch_vcfs = caller_vcf_channels[0]

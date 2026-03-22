@@ -668,16 +668,16 @@ class TestCombinedWorkflowWiring:
 
 
 # ===========================================================================
-# 10. full workflow wiring
+# 9. full workflow wiring
 # ===========================================================================
 
 class TestFullWorkflowWiring:
     """The full workflow mode must chain callers -> consensus -> features -> train."""
 
     def _get_case_body(self, main_text):
-        m = re.search(r"case\['full'\](.+?)break", main_text, re.DOTALL)
-        assert m, "case['full'] block not found in main.nf"
-        return m.group(1)
+        case_match = re.search(r"case\['full'\](.+?)break", main_text, re.DOTALL)
+        assert case_match, "case['full'] block not found in main.nf"
+        return case_match.group(1)
 
     def test_full_case_exists(self, main_text):
         assert "case['full']" in main_text
@@ -709,7 +709,7 @@ class TestFullWorkflowWiring:
 
 
 # ===========================================================================
-# 9. feature_extraction case: Truvari auto-discovery of collapsed VCF
+# 10. feature_extraction case: Truvari auto-discovery of collapsed VCF
 # ===========================================================================
 
 class TestFeatureExtractionCase:
