@@ -46,7 +46,8 @@ process TRAIN_XGBOOST {
     script:
     // All feature TSV files are staged into the working directory by Nextflow.
     // The Python script globs *_features.tsv from the current directory ('.').
-    def probes_arg = probes_bed ? "--probes_bed '${probes_bed}'" : ""
+    def probes_escaped = probes_bed ? probes_bed.toString().replace("'", "'\\''") : null
+    def probes_arg = probes_escaped ? "--probes_bed '${probes_escaped}'" : ""
     """
     python ${projectDir}/bin/train_xgboost.py \
         --features_dir   '.' \

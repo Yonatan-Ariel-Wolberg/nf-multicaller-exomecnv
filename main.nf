@@ -463,7 +463,8 @@ workflow {
                 .set { ch_features }
             Channel.value(file(params.truth_labels))
                 .set { ch_truth }
-            Channel.value(params.get('probes_bed', false) ? file(params.probes_bed) : [])
+            def probesBedParam = params.get('probes_bed', false)
+            Channel.value(probesBedParam ? file(probesBedParam) : [])
                 .set { ch_probes }
             RUN_TRAIN(ch_features, ch_truth, ch_probes)
             break

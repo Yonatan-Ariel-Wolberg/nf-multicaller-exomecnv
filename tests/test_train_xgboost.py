@@ -53,7 +53,9 @@ def tx():
     return _import_module()
 
 EXPECTED_TRUTH_LABEL_COLUMNS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type', 'truth_label']
-EXPECTED_TRUTH_LABEL_JOIN_KEYS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type_norm']
+# merge_features_with_truth_labels joins on cnv_type_norm where cnv_type values
+# are normalized into canonical labels (e.g. 1/DUP -> DUP, 0/DEL -> DEL).
+EXPECTED_MERGE_KEYS = ['sample_id', 'chrom', 'start', 'end', 'cnv_type_norm']
 
 
 # ===========================================================================
@@ -248,8 +250,7 @@ class TestTruthLabelContract:
         for col in EXPECTED_TRUTH_LABEL_COLUMNS:
             assert col in required_cols
 
-    def test_merge_uses_normalised_cnv_type_in_join_keys(self, script_text):
-        assert 'def merge_features_with_truth_labels(' in script_text
+    def test_merge_uses_normalized_cnv_type_in_join_keys(self, script_text):
         module = ast.parse(script_text)
         join_keys = None
         merge_fn = next(
@@ -267,7 +268,7 @@ class TestTruthLabelContract:
             if join_keys is not None:
                 break
         assert join_keys is not None
-        assert join_keys == EXPECTED_TRUTH_LABEL_JOIN_KEYS
+        assert join_keys == EXPECTED_MERGE_KEYS
 
     def test_truth_labels_cli_help_mentions_cnv_type(self, script_text):
         assert 'sample_id, chrom, start, end, cnv_type, truth_label' in script_text
@@ -300,7 +301,8 @@ class TestProbeOverlapMatching:
 
     def _labels_df(self):
         # S1 exact coordinate mismatch but same probes should match by fallback.
-        # S2 exact match should be counted as exact.
+        # S2 has identical chr1:500-600 coordinates in both DataFrames and is
+        # therefore counted as an exact-key match.
         return pd.DataFrame({
             'sample_id': ['S1', 'S2'],
             'chrom': ['chr1', 'chr1'],
