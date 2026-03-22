@@ -168,7 +168,9 @@ class TestRequiredParamsValidation:
         assert "def REQUIRED_PARAMS_BY_WORKFLOW = [" in main_text
         for wf in [
             "indelible", "canoes", "xhmm", "clamms", "dragen",
-            "cnvkit", "gcnv", "normalise", "feature_extraction", "train", "evaluate",
+            "cnvkit", "gcnv", "survivor", "truvari", "survivor_with_features",
+            "truvari_with_features", "normalise", "feature_extraction", "train",
+            "evaluate", "full",
         ]:
             assert f"'{wf}':" in main_text
 
@@ -180,14 +182,39 @@ class TestRequiredParamsValidation:
         assert "--workflow ${workflow_name} requires at least TWO caller VCF directories" in main_text
         assert "CALLER_DIR_PARAMS.collect { '--' + it }.join(', ')" in main_text
 
-    def test_full_validation_requires_truth_labels(self, main_text):
-        assert "Missing required parameter(s) for --workflow full" in main_text
-        assert "'truth_labels'" in main_text
-
-    def test_full_validation_requires_two_caller_groups(self, main_text):
-        assert "--workflow full requires at least two configured caller input groups" in main_text
-        assert "full_caller_groups" in main_text
-        assert "configured_groups_count < 2" in main_text
+    @pytest.mark.parametrize("workflow_name, expected_flags", [
+        ("canoes", ["--outdir", "--samplesheet_bams", "--ref", "--fai", "--probes", "--canoes_batch_size"]),
+        ("clamms", ["--outdir", "--samplesheet_bams", "--ref", "--fai", "--probes", "--interval_list", "--mappability", "--special_reg", "--sexinfo"]),
+        ("cnvkit", ["--outdir", "--bams", "--fasta", "--targets", "--refflat", "--test_size", "--test_list"]),
+        ("dragen", ["--outdir", "--projectId", "--pipelineId", "--cramFilePairsUploadPath", "--icaUploadPath"]),
+        ("evaluate", ["--outdir", "--vcf_dir", "--caller", "--truth_bed", "--probes_bed"]),
+        ("full", ["--outdir", "--merger_mode", "--samplesheet_bams", "--fai", "--bams", "--fasta", "--targets", "--refflat", "--samples_path", "--dict", "--exome_targets", "--cramFilePairsUploadPath", "--crams", "--truth_labels"]),
+        ("gcnv", ["--outdir", "--samples_path", "--fasta", "--fai", "--dict", "--exome_targets", "--bin_length", "--padding", "--is_wgs", "--scatter_count"]),
+        ("indelible", ["--outdir", "--crams", "--ref", "--priors", "--indelible_conf", "--fai"]),
+        ("normalise", ["--outdir", "--vcf_dir", "--caller"]),
+        ("survivor", ["--outdir", "--canoes_dir", "--clamms_dir", "--xhmm_dir", "--cnvkit_dir", "--gcnv_dir", "--dragen_dir", "--indelible_dir"]),
+        ("survivor_with_features", ["--outdir", "--canoes_dir", "--clamms_dir", "--xhmm_dir", "--cnvkit_dir", "--gcnv_dir", "--dragen_dir", "--indelible_dir", "--canoes_norm_dir", "--clamms_norm_dir", "--xhmm_norm_dir", "--cnvkit_norm_dir", "--gcnv_norm_dir", "--dragen_norm_dir", "--indelible_norm_dir", "--merger_mode"]),
+        ("train", ["--outdir", "--features_dir", "--truth_labels"]),
+        ("truvari", ["--outdir", "--canoes_dir", "--clamms_dir", "--xhmm_dir", "--cnvkit_dir", "--gcnv_dir", "--dragen_dir", "--indelible_dir"]),
+        ("truvari_with_features", ["--outdir", "--canoes_dir", "--clamms_dir", "--xhmm_dir", "--cnvkit_dir", "--gcnv_dir", "--dragen_dir", "--indelible_dir", "--canoes_norm_dir", "--clamms_norm_dir", "--xhmm_norm_dir", "--cnvkit_norm_dir", "--gcnv_norm_dir", "--dragen_norm_dir", "--indelible_norm_dir", "--merger_mode"]),
+        ("xhmm", ["--outdir", "--samplesheet_bams", "--ref", "--probes", "--xhmm_conf", "--xhmm_batch_size"]),
+    ])
+    def test_required_params_map_matches_params_templates(self, main_text, workflow_name, expected_flags):
+        workflow_block = re.search(
+            rf"'{re.escape(workflow_name)}':\s*\[(.*?)\]",
+            main_text,
+            re.DOTALL,
+        )
+        assert workflow_block is not None, (
+            f"REQUIRED_PARAMS_BY_WORKFLOW must define a list for '{workflow_name}'"
+        )
+        block = workflow_block.group(1)
+        for flag in expected_flags:
+            param_name = flag.replace("--", "")
+            assert f"'{param_name}'" in block, (
+                f"Workflow '{workflow_name}' required params must include '{param_name}' "
+                f"(from params template), missing from REQUIRED_PARAMS_BY_WORKFLOW."
+            )
 
 
 # ===========================================================================

@@ -34,17 +34,46 @@ def CALLER_DIR_PARAMS = [
 ]
 
 def REQUIRED_PARAMS_BY_WORKFLOW = [
-    'indelible': ['crams'],
-    'canoes': ['samplesheet_bams', 'fai'],
-    'xhmm': ['samplesheet_bams'],
-    'clamms': ['samplesheet_bams', 'fai'],
-    'dragen': ['cramFilePairsUploadPath'],
-    'cnvkit': ['bams', 'fasta', 'targets', 'refflat'],
-    'gcnv': ['samples_path', 'fasta', 'fai', 'dict', 'exome_targets'],
-    'normalise': ['vcf_dir', 'caller'],
-    'feature_extraction': ['merged_vcf_dir'],
-    'train': ['features_dir', 'truth_labels'],
-    'evaluate': ['vcf_dir', 'caller', 'truth_bed', 'probes_bed'],
+    // Required params are aligned to the workflow-specific params/*.json templates.
+    'indelible': ['outdir', 'crams', 'ref', 'priors', 'indelible_conf', 'fai'],
+    'canoes': ['outdir', 'samplesheet_bams', 'ref', 'fai', 'probes', 'canoes_batch_size'],
+    'xhmm': ['outdir', 'samplesheet_bams', 'ref', 'probes', 'xhmm_conf', 'xhmm_batch_size'],
+    'clamms': ['outdir', 'samplesheet_bams', 'ref', 'fai', 'probes', 'interval_list', 'mappability', 'special_reg', 'sexinfo'],
+    'dragen': [
+        'outdir', 'projectId', 'pipelineId', 'userReference', 'storageSize',
+        'referenceAnalysisDataCode', 'targetBedAnalysisDataCode', 'cramAnalysisDataCode',
+        'cramIndexAnalysisDataCode', 'cramReferenceAnalysisDataCode', 'referenceFileId',
+        'cramReferenceFileId', 'targetBedFileId', 'localDownloadPath',
+        'cramFilePairsUploadPath', 'icaUploadPath', 'maxUploadForks', 'uploadRetries',
+        'fileStatusCheckInterval', 'fileStatusCheckLimit', 'analysisStatusCheckInterval',
+        'analysisStatusCheckLimit'
+    ],
+    'cnvkit': ['outdir', 'bams', 'fasta', 'targets', 'refflat', 'test_size', 'test_list'],
+    'gcnv': ['outdir', 'samples_path', 'fasta', 'fai', 'dict', 'exome_targets', 'bin_length', 'padding', 'is_wgs', 'scatter_count'],
+    'survivor': ['outdir', 'canoes_dir', 'clamms_dir', 'xhmm_dir', 'cnvkit_dir', 'gcnv_dir', 'dragen_dir', 'indelible_dir'],
+    'truvari': ['outdir', 'canoes_dir', 'clamms_dir', 'xhmm_dir', 'cnvkit_dir', 'gcnv_dir', 'dragen_dir', 'indelible_dir'],
+    'survivor_with_features': [
+        'outdir', 'canoes_dir', 'clamms_dir', 'xhmm_dir', 'cnvkit_dir', 'gcnv_dir',
+        'dragen_dir', 'indelible_dir', 'canoes_norm_dir', 'clamms_norm_dir',
+        'xhmm_norm_dir', 'cnvkit_norm_dir', 'gcnv_norm_dir', 'dragen_norm_dir',
+        'indelible_norm_dir', 'merger_mode'
+    ],
+    'truvari_with_features': [
+        'outdir', 'canoes_dir', 'clamms_dir', 'xhmm_dir', 'cnvkit_dir', 'gcnv_dir',
+        'dragen_dir', 'indelible_dir', 'canoes_norm_dir', 'clamms_norm_dir',
+        'xhmm_norm_dir', 'cnvkit_norm_dir', 'gcnv_norm_dir', 'dragen_norm_dir',
+        'indelible_norm_dir', 'merger_mode'
+    ],
+    'normalise': ['outdir', 'vcf_dir', 'caller'],
+    'feature_extraction': ['outdir', 'merged_vcf_dir', 'merger_mode'],
+    'train': ['outdir', 'features_dir', 'truth_labels'],
+    'evaluate': ['outdir', 'vcf_dir', 'caller', 'truth_bed', 'probes_bed'],
+    'full': [
+        'outdir', 'merger_mode', 'samplesheet_bams', 'fai', 'bams', 'fasta', 'targets',
+        'refflat', 'samples_path', 'dict', 'exome_targets', 'cramFilePairsUploadPath',
+        'crams', 'bam_file', 'reference_fasta', 'bed_file', 'mappability_file',
+        'indelible_counts', 'truth_labels', 'probes_bed'
+    ],
 ]
 
 def is_param_set(param_name) {
@@ -66,25 +95,6 @@ def validate_required_params(workflow_name) {
         def configured_caller_dirs = CALLER_DIR_PARAMS.findAll { is_param_set(it) }
         if (configured_caller_dirs.size() < 2) {
             exit 1, "Error: --workflow ${workflow_name} requires at least TWO caller VCF directories. Configure at least 2 of: ${CALLER_DIR_PARAMS.collect { '--' + it }.join(', ')}"
-        }
-    }
-
-    if (workflow_name == 'full') {
-        def missing_full = ['truth_labels'].findAll { !is_param_set(it) }
-        if (!missing_full.isEmpty()) {
-            exit 1, "Error: Missing required parameter(s) for --workflow full: ${missing_full.collect { '--' + it }.join(', ')}"
-        }
-
-        def full_caller_groups = [
-            ['samplesheet_bams', 'fai'],
-            ['bams', 'fasta', 'targets', 'refflat'],
-            ['samples_path', 'fasta', 'fai', 'dict', 'exome_targets'],
-            ['cramFilePairsUploadPath'],
-            ['crams'],
-        ]
-        def configured_groups_count = full_caller_groups.count { keys -> keys.every { is_param_set(it) } }
-        if (configured_groups_count < 2) {
-            exit 1, "Error: --workflow full requires at least two configured caller input groups. Provide at least two of: (--samplesheet_bams + --fai), (--bams + --fasta + --targets + --refflat), (--samples_path + --fasta + --fai + --dict + --exome_targets), (--cramFilePairsUploadPath), (--crams)"
         }
     }
 }
