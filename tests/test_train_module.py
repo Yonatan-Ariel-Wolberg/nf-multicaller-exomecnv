@@ -365,3 +365,31 @@ class TestTrainScriptCLI:
     def test_main_merges_truth_labels(self, script_text):
         """Script must join features with truth labels."""
         assert 'truth_label' in script_text
+
+
+# ===========================================================================
+# 9. README training documentation
+# ===========================================================================
+
+class TestReadmeTrainTruthLabelsDocumentation:
+    """README should document required truth-label fields for training."""
+
+    README_PATH = os.path.join(REPO_ROOT, 'README.md')
+
+    @pytest.fixture(scope='class')
+    def readme_text(self):
+        with open(self.README_PATH) as fh:
+            return fh.read()
+
+    def test_readme_mentions_truth_label_tsv_requirements(self, readme_text):
+        assert 'Truth-label TSV requirements' in readme_text
+
+    def test_readme_lists_required_truth_label_columns(self, readme_text):
+        assert '`sample_id`' in readme_text
+        assert '`chrom`' in readme_text
+        assert '`start`' in readme_text
+        assert '`end`' in readme_text
+        assert '`truth_label`' in readme_text
+
+    def test_readme_documents_true_label_value(self, readme_text):
+        assert 'truth_label = 1' in readme_text
