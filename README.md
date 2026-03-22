@@ -370,6 +370,32 @@ All three features are NaN when the capture BED or BAM/CRAM is absent.
    - `cnv_model.json` – the serialised XGBoost model.
    - `training_report.txt` – cross-validation precision, recall, and F1-score.
 
+**Truth-label TSV requirements (including truthset CNVs labelled as true)**
+
+The `--truth_labels` file must be a tab-delimited TSV containing at least:
+
+- `sample_id`
+- `chrom`
+- `start`
+- `end`
+- `cnv_type` (e.g., `DEL` / `DUP`)
+- `truth_label`
+
+Rows are joined to the feature matrix using **exact** matches on
+`sample_id`, `chrom`, `start`, `end`, and `cnv_type` (inner join).
+
+For truthset CNVs that should be treated as **true positives** during
+training, set `truth_label = 1`. False positives should use
+`truth_label = 0`.
+
+Example:
+
+```tsv
+sample_id	chrom	start	end	cnv_type	truth_label
+SAMPLE_001	chr1	100000	130000	DEL	1
+SAMPLE_001	chr1	500000	520000	DUP	0
+```
+
 ---
 
 ### Step 6 — Performance evaluation (`--workflow evaluate`)
