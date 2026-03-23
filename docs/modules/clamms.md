@@ -31,6 +31,24 @@ CLAMMS uses depth-of-coverage and cohort-derived nearest-neighbour normalisation
 - `special_reg`
 - `sexinfo`
 
+## Sexinfo file requirements
+
+The `sexinfo` file must be a headerless, tab-separated file with exactly two columns:
+
+- Column 1: `sample_id` – must match the sample identifiers used in the samplesheet.
+- Column 2: `sex` – biological sex of the sample; must be `M` (male) or `F` (female).
+
+Example:
+
+```
+SAMPLE001	M
+SAMPLE002	F
+SAMPLE003	M
+```
+
+Every sample in the cohort must have an entry in this file.  CLAMMS will abort
+with an error if a sample ID is not found.
+
 ## Commonly used optional parameters
 - `truth_bed`, `probes_bed` (only when running automatic evaluation in `main.nf`)
 
