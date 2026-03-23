@@ -209,6 +209,23 @@ Example:
 - `truth_label = 1` for true CNV calls.
 - `truth_label = 0` for non-CNV calls.
 
+### Sexinfo file requirements
+
+For `--workflow clamms`, the `sexinfo` input file must be a headerless, tab-separated file with exactly two columns:
+
+- Column 1: `sample_id` – must match the sample identifiers used in the samplesheet.
+- Column 2: `sex` – biological sex of the sample; must be `M` (male) or `F` (female).
+
+Example:
+
+```
+SAMPLE001	M
+SAMPLE002	F
+SAMPLE003	M
+```
+
+Every sample in the cohort must have an entry in this file; CLAMMS will abort with an error if a sample ID is missing.
+
 ## Running on the Wits UI Cluster
 
 The workflow has been tested on the **University of the Witwatersrand (Wits) UI HPC cluster**, which runs **Linux** and uses **SLURM** as its job scheduler.  Use the `wits` profile to activate the cluster-specific settings.

@@ -35,6 +35,7 @@ import pytest
 
 
 NF_MODULE = "modules/modules-clamms.nf"
+REPO_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +62,19 @@ def _extract_script(process_body):
     """Return the heredoc script block content from a process body."""
     match = re.search(r'"""\s*(.+?)\s*"""', process_body, re.DOTALL)
     return match.group(1) if match else ""
+
+
+def _extract_doc_section(text, heading):
+    """Return the text of a named section up to (but not including) the next heading."""
+    section_start = text.find(heading)
+    if section_start == -1:
+        return None
+    heading_match = re.search(r'\n#{1,6}(\s|\n|$)', text[section_start + 1:])
+    section_end = (
+        section_start + 1 + heading_match.start()
+        if heading_match else len(text)
+    )
+    return text[section_start:section_end]
 
 
 # ---------------------------------------------------------------------------
@@ -596,3 +610,70 @@ class TestWorkflow:
             "CLAMMS workflow must map filtered_cnvs to extract the filtered BED "
             "file (second tuple element) before passing to CONVERT_CLAMMS_TO_VCF."
         )
+
+
+# ===========================================================================
+# 11. README and docs sexinfo documentation
+# ===========================================================================
+
+class TestReadmeClammsSexinfoDocumentation:
+    """README should document the required sexinfo file format for CLAMMS."""
+
+    README_PATH = os.path.join(REPO_ROOT, 'README.md')
+
+    @pytest.fixture(scope='class')
+    def readme_text(self):
+        with open(self.README_PATH) as fh:
+            return fh.read()
+
+    def test_readme_mentions_sexinfo_requirements(self, readme_text):
+        assert 'Sexinfo file requirements' in readme_text, (
+            "README.md must contain a 'Sexinfo file requirements' section."
+        )
+
+    def test_readme_sexinfo_documents_sample_id_column(self, readme_text):
+        section = _extract_doc_section(readme_text, 'Sexinfo file requirements')
+        assert section is not None
+        assert 'sample_id' in section, (
+            "Sexinfo requirements section must mention the 'sample_id' column."
+        )
+
+    def test_readme_sexinfo_documents_sex_values(self, readme_text):
+        section = _extract_doc_section(readme_text, 'Sexinfo file requirements')
+        assert section is not None
+        assert re.search(r'\bM\b', section) and re.search(r'\bF\b', section), (
+            "Sexinfo requirements section must document both 'M' (male) and "
+            "'F' (female) as valid sex values."
+        )
+
+
+class TestClammsDocSexinfoDocumentation:
+    """docs/modules/clamms.md should document the required sexinfo file format."""
+
+    CLAMMS_DOC_PATH = os.path.join(REPO_ROOT, 'docs', 'modules', 'clamms.md')
+
+    @pytest.fixture(scope='class')
+    def doc_text(self):
+        with open(self.CLAMMS_DOC_PATH) as fh:
+            return fh.read()
+
+    def test_clamms_doc_mentions_sexinfo_requirements(self, doc_text):
+        assert 'Sexinfo file requirements' in doc_text, (
+            "docs/modules/clamms.md must contain a 'Sexinfo file requirements' section."
+        )
+
+    def test_clamms_doc_sexinfo_documents_sample_id_column(self, doc_text):
+        section = _extract_doc_section(doc_text, 'Sexinfo file requirements')
+        assert section is not None
+        assert 'sample_id' in section, (
+            "clamms.md sexinfo section must mention the 'sample_id' column."
+        )
+
+    def test_clamms_doc_sexinfo_documents_sex_values(self, doc_text):
+        section = _extract_doc_section(doc_text, 'Sexinfo file requirements')
+        assert section is not None
+        assert re.search(r'\bM\b', section) and re.search(r'\bF\b', section), (
+            "clamms.md sexinfo section must document both 'M' (male) and "
+            "'F' (female) as valid sex values."
+        )
+
