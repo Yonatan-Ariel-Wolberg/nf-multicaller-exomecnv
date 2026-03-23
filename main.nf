@@ -240,6 +240,7 @@ def group_caller_vcfs(vcf_ch) {
     return vcf_ch
         .groupTuple()
         .filter { sample_id, vcfs -> vcfs.size() >= 2 }
+        .ifEmpty { error "No samples with VCFs from 2 or more callers were found. Check that the caller VCF directories contain files with matching sample IDs across at least 2 callers." }
 }
 
 // =====================================================================================
@@ -487,6 +488,7 @@ workflow {
             Channel.fromFilePairs([params.crams + '/*{.cram,.cram.crai}'])
                 .map { it -> [ it[0][0..-6], it[1][0], it[1][1] ] }
                 .filter { it -> it[1] =~ '_01_1' }
+                .ifEmpty { error "indelible workflow: no proband CRAMs found in '${params.crams}'. Check that files follow the *_01_1.cram naming convention." }
                 .set { ch_crams }
 
             Channel.fromFilePairs([params.crams + '/*{_01_1,_02_2,_03_3}*'], size: 6)
@@ -511,6 +513,7 @@ workflow {
             Channel.fromPath(params.samplesheet_bams)
                 .splitCsv(header: true, sep: '\t')
                 .map { row -> [ "${row.SampleID}", "${row.BAM}", "${row.BAM}".replaceAll(/\.bam$/, '.bam.bai') ] }
+                .ifEmpty { error "canoes workflow: no samples found in samplesheet '${params.samplesheet_bams}'. Check that the file is tab-separated with SampleID and BAM columns." }
                 .set { ch_bams }
             RUN_CANOES(ch_bams, chroms, file(params.fai))
             break
@@ -519,6 +522,7 @@ workflow {
             Channel.fromPath(params.samplesheet_bams)
                 .splitCsv(header: true, sep: '\t')
                 .map { row -> [ "${row.SampleID}", "${row.BAM}", "${row.BAM}".replaceAll(/\.bam$/, '.bam.bai') ] }
+                .ifEmpty { error "xhmm workflow: no samples found in samplesheet '${params.samplesheet_bams}'. Check that the file is tab-separated with SampleID and BAM columns." }
                 .set { ch_bams }
             RUN_XHMM(ch_bams)
             break
@@ -527,6 +531,7 @@ workflow {
             Channel.fromPath(params.samplesheet_bams)
                 .splitCsv(header: true, sep: '\t')
                 .map { row -> [ "${row.SampleID}", "${row.BAM}", "${row.BAM}".replaceAll(/\.bam$/, '.bam.bai') ] }
+                .ifEmpty { error "clamms workflow: no samples found in samplesheet '${params.samplesheet_bams}'. Check that the file is tab-separated with SampleID and BAM columns." }
                 .set { ch_bams }
             RUN_CLAMMS(ch_bams, file(params.fai))
             break
@@ -561,6 +566,7 @@ workflow {
                     def index = it.name.endsWith('.bam') ? "${it}.bai" : "${it}.crai"
                     return [ it.baseName, it, file(index) ] 
                 }
+                .ifEmpty { error "gcnv workflow: no sample files found matching '${params.samples_path}'. Check that the glob matches existing BAM or CRAM files." }
                 .set { ch_bams }
             RUN_GCNV(ch_bams, file(params.fasta), file(params.fai), file(params.dict), file(params.exome_targets))
             break
@@ -597,6 +603,7 @@ workflow {
                         .replaceAll(/\.(sorted\.)?vcf(\.gz)?$/, '')
                     [sample_name, f, params.caller.toUpperCase()]
                 }
+                .ifEmpty { error "normalise workflow: no VCF files found in '${params.vcf_dir}'. Check that the directory contains .vcf or .vcf.gz files." }
                 .set { ch_vcfs }
             RUN_NORMALISE(ch_vcfs)
             break
@@ -618,6 +625,7 @@ workflow {
                         def collapsed_vcf_f = collapsed_f.exists() ? collapsed_f : []
                         build_feature_inputs(sample_id, f, collapsed_vcf_f)
                     }
+                    .ifEmpty { error "feature_extraction workflow (truvari mode): no merged VCF files found in '${params.merged_vcf_dir}'. Expected files matching *_truvari_merged.vcf or *_truvari_merged.vcf.gz." }
                     .set { ch_feature_inputs }
             } else {
                 Channel.fromPath(params.merged_vcf_dir + '/**/*_survivor_union.vcf*')
@@ -625,6 +633,7 @@ workflow {
                         def sample_id = f.name.replaceAll(/_survivor.*/, '').replaceAll(/\.vcf(\.gz)?$/i, '')
                         build_feature_inputs(sample_id, f, [])
                     }
+                    .ifEmpty { error "feature_extraction workflow (survivor mode): no merged VCF files found in '${params.merged_vcf_dir}'. Expected files matching *_survivor_union.vcf or *_survivor_union.vcf.gz." }
                     .set { ch_feature_inputs }
             }
             RUN_FEATURE_EXTRACTION(ch_feature_inputs)
@@ -641,6 +650,7 @@ workflow {
             // Optional: --probes_bed     (capture-target BED used to match rows by
             //                             shared probes when coordinates differ)
             Channel.fromPath(params.features_dir + '/**/*_features.tsv')
+                .ifEmpty { error "train workflow: no feature TSV files found in '${params.features_dir}'. Expected *_features.tsv files produced by the feature_extraction workflow." }
                 .set { ch_features }
             Channel.value(file(params.truth_labels))
                 .set { ch_truth }
@@ -661,6 +671,7 @@ workflow {
             //           --truth_bed  (truth set BED: CHR, START, STOP, CNV_TYPE, SAMPLE_ID)
             //           --probes_bed (capture target BED: CHR, START, STOP[, ...])
             Channel.fromPath(params.vcf_dir + '/*.vcf*')
+                .ifEmpty { error "evaluate workflow: no VCF files found in '${params.vcf_dir}'. Check that the directory contains .vcf or .vcf.gz files." }
                 .set { ch_vcfs }
             RUN_EVALUATE(
                 ch_vcfs,
