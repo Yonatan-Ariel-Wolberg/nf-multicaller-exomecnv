@@ -33,6 +33,10 @@ def CALLER_DIR_PARAMS = [
     'indelible_dir',
 ]
 
+// Valid caller names accepted by normalise_cnv_caller_quality_scores.py.
+// Note: GATK gCNV is referred to as 'GATK' (not 'GCNV') by the normalise script.
+def VALID_NORMALISE_CALLERS = ['CANOES', 'CLAMMS', 'XHMM', 'GATK', 'CNVKIT', 'DRAGEN', 'INDELIBLE']
+
 def REQUIRED_PARAMS_BY_WORKFLOW = [
     // Required params are aligned to the workflow-specific params/*.json templates.
     'indelible': ['outdir', 'crams', 'ref', 'priors', 'indelible_conf', 'fai'],
@@ -117,6 +121,34 @@ def validate_required_params(workflow_name) {
 
         if (configured_caller_count < 2) {
             exit 1, "Error: --workflow full requires at least 2 configured CNV callers out of 7 (CANOES, CLAMMS, XHMM, CNVKIT, GCNV, DRAGEN, INDELIBLE). Configure at least one of: (--samplesheet_bams + --fai) [enables 3 callers], (--bams + --fasta + --targets + --refflat), (--samples_path + --fasta + --fai + --dict + --exome_targets), (--cramFilePairsUploadPath), (--crams)."
+        }
+    }
+
+    if (workflow_name == 'normalise' && is_param_set('caller')) {
+        def caller_val = params.caller.toString().trim().toUpperCase()
+        if (!VALID_NORMALISE_CALLERS.contains(caller_val)) {
+            exit 1, "Error: --caller '${params.caller}' is not a supported caller for --workflow normalise. Valid values are: ${VALID_NORMALISE_CALLERS.collect { \"'${it}'\" }.join(', ')}"
+        }
+    }
+
+    if (workflow_name == 'gcnv') {
+        if (is_param_set('bin_length')) {
+            def bin_length_val = params.bin_length.toString().toInteger()
+            if (bin_length_val < 0) {
+                exit 1, "Error: --bin_length must be a non-negative integer for --workflow gcnv. Got: ${params.bin_length}"
+            }
+        }
+        if (is_param_set('padding')) {
+            def padding_val = params.padding.toString().toInteger()
+            if (padding_val < 0) {
+                exit 1, "Error: --padding must be a non-negative integer for --workflow gcnv. Got: ${params.padding}"
+            }
+        }
+        if (is_param_set('scatter_count')) {
+            def scatter_count_val = params.scatter_count.toString().toInteger()
+            if (scatter_count_val <= 0) {
+                exit 1, "Error: --scatter_count must be a positive integer for --workflow gcnv. Got: ${params.scatter_count}"
+            }
         }
     }
 }
