@@ -24,6 +24,10 @@ NF_PATH     = os.path.join(REPO_ROOT, 'modules', 'modules-normalise.nf')
 MAIN_NF     = os.path.join(REPO_ROOT, 'main.nf')
 PARAMS_FILE = os.path.join(REPO_ROOT, 'params', 'params-normalise.json')
 
+# Valid caller names accepted by normalise_cnv_caller_quality_scores.py.
+# Note: GATK gCNV is 'GATK' (not 'GCNV') in the normalise script.
+VALID_NORMALISE_CALLERS = ['CANOES', 'CLAMMS', 'XHMM', 'GATK', 'CNVKIT', 'DRAGEN', 'INDELIBLE']
+
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -284,11 +288,10 @@ class TestParamsFile:
         """The default caller value in params-normalise.json must be a valid normalise caller."""
         with open(PARAMS_FILE) as fh:
             data = json.load(fh)
-        valid_callers = ['CANOES', 'CLAMMS', 'XHMM', 'GATK', 'CNVKIT', 'DRAGEN', 'INDELIBLE']
         caller = data.get('caller', '').upper()
-        assert caller in valid_callers, (
+        assert caller in VALID_NORMALISE_CALLERS, (
             f"params-normalise.json 'caller' value '{data.get('caller')}' is not valid. "
-            f"Must be one of: {valid_callers}"
+            f"Must be one of: {VALID_NORMALISE_CALLERS}"
         )
 
 
@@ -300,8 +303,6 @@ class TestCallerValidation:
     """main.nf must validate --caller against the list of supported callers
     for the normalise workflow before running any process."""
 
-    VALID_CALLERS = ['CANOES', 'CLAMMS', 'XHMM', 'GATK', 'CNVKIT', 'DRAGEN', 'INDELIBLE']
-
     def test_valid_normalise_callers_defined(self, main_text):
         """main.nf must define the VALID_NORMALISE_CALLERS constant list."""
         assert 'VALID_NORMALISE_CALLERS' in main_text, (
@@ -309,7 +310,7 @@ class TestCallerValidation:
             "caller names for the normalise workflow"
         )
 
-    @pytest.mark.parametrize("caller", VALID_CALLERS)
+    @pytest.mark.parametrize("caller", VALID_NORMALISE_CALLERS)
     def test_valid_caller_names_listed(self, main_text, caller):
         """Each valid caller name must appear in the VALID_NORMALISE_CALLERS definition."""
         valid_callers_block = re.search(

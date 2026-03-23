@@ -151,6 +151,35 @@ def validate_required_params(workflow_name) {
             }
         }
     }
+
+    if (workflow_name == 'canoes' && is_param_set('canoes_batch_size')) {
+        def canoes_batch_val = params.canoes_batch_size.toString().toInteger()
+        if (canoes_batch_val <= 0) {
+            exit 1, "Error: --canoes_batch_size must be a positive integer for --workflow canoes. Got: ${params.canoes_batch_size}"
+        }
+    }
+
+    if (workflow_name == 'xhmm' && is_param_set('xhmm_batch_size')) {
+        def xhmm_batch_val = params.xhmm_batch_size.toString().toInteger()
+        if (xhmm_batch_val <= 0) {
+            exit 1, "Error: --xhmm_batch_size must be a positive integer for --workflow xhmm. Got: ${params.xhmm_batch_size}"
+        }
+    }
+
+    if (workflow_name == 'cnvkit' && is_param_set('test_size')) {
+        def test_size_val = params.test_size.toString().toInteger()
+        if (test_size_val != -1 && test_size_val <= 0) {
+            exit 1, "Error: --test_size must be -1 (disabled) or a positive integer for --workflow cnvkit. Got: ${params.test_size}"
+        }
+    }
+
+    if (['feature_extraction', 'survivor_with_features', 'truvari_with_features'].contains(workflow_name) && is_param_set('merger_mode')) {
+        def valid_merger_modes = ['survivor', 'truvari']
+        def merger_mode_val = params.merger_mode.toString().trim().toLowerCase()
+        if (!valid_merger_modes.contains(merger_mode_val)) {
+            exit 1, "Error: --merger_mode '${params.merger_mode}' is not valid for --workflow ${workflow_name}. Valid values are: 'survivor', 'truvari'"
+        }
+    }
 }
 
 def extract_sample_id_from_vcf(f) {
