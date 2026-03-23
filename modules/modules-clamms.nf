@@ -44,7 +44,8 @@ process GENERATE_WINDOWS {
     set -euo pipefail
     export INSERT_SIZE=200
     sort -k1,1 -k2,2n ${probes} > targets_sorted.bed
-    \$CLAMMS_DIR/annotate_windows.sh targets_sorted.bed ${ref} ${mappability} \$INSERT_SIZE ${special_reg} > windows.bed
+    sort -k1,1 -k2,2n ${mappability} > mappability_sorted.bed
+    \$CLAMMS_DIR/annotate_windows.sh targets_sorted.bed ${ref} mappability_sorted.bed \$INSERT_SIZE ${special_reg} > windows.bed
     """
 }
 
