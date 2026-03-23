@@ -152,6 +152,25 @@ class TestGenerateWindows:
             "annotate_windows.sh (CLAMMS requirement)."
         )
 
+    def test_mappability_sorted_before_annotation(self, generate_windows_body):
+        """Mappability BED must be sorted with sort -k1,1 -k2,2n before annotating.
+        CLAMMS annotate_windows.sh uses bedtools with sorted input; passing an
+        unsorted mappability file causes incorrect window annotations or errors."""
+        script = _extract_script(generate_windows_body)
+        # There must be a sort step that produces mappability_sorted.bed
+        assert "mappability_sorted.bed" in script, (
+            "Mappability BED must be sorted to 'mappability_sorted.bed' before "
+            "being passed to annotate_windows.sh (bedtools -sorted requirement)."
+        )
+        # The sorted file (not the raw param) must be passed to annotate_windows.sh
+        annot_match = re.search(r"annotate_windows\.sh\s+\S+\s+\S+\s+(\S+)", script)
+        assert annot_match, "annotate_windows.sh call not found in script"
+        mappability_arg = annot_match.group(1)
+        assert "mappability_sorted" in mappability_arg, (
+            "annotate_windows.sh must receive mappability_sorted.bed (the "
+            "pre-sorted copy), not the raw ${mappability} parameter."
+        )
+
     def test_insert_size_exported(self, generate_windows_body):
         """INSERT_SIZE environment variable must be exported/set."""
         script = _extract_script(generate_windows_body)
