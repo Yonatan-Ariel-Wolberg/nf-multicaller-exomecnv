@@ -363,10 +363,10 @@ class TestWorkflowErrorHandling:
         workflow_block = re.search(r"workflow CLAMMS\s*\{(.+?)(?=\n\}|$)", text, re.DOTALL)
         assert workflow_block is not None, "workflow CLAMMS not found in modules-clamms.nf"
         body = workflow_block.group(1)
-        assert "norm_coverage_ch" in body and ".ifEmpty" in body, (
+        assert re.search(r"norm_coverage_ch\s*=\s*.+?\.ifEmpty\s*\{", body, re.DOTALL), (
             "workflow CLAMMS should guard normalized coverage channel with .ifEmpty before collect"
         )
-        assert "clamms_cnvs_ch" in body and ".ifEmpty" in body, (
+        assert re.search(r"clamms_cnvs_ch\s*=\s*.+?\.ifEmpty\s*\{", body, re.DOTALL), (
             "workflow CLAMMS should guard CNV call channel with .ifEmpty before collect"
         )
 
