@@ -8,21 +8,22 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 README = REPO_ROOT / "README.md"
 
 
-def test_readme_lists_known_unhandled_use_case_errors_section():
+def test_readme_documents_validation_gaps():
     text = README.read_text(encoding="utf-8")
     assert "### Known unhandled use-case errors (current gaps)" in text
 
     expected_items = [
-        "--workflow canoes` / `xhmm` / `clamms",
-        "--workflow gcnv",
-        "--workflow cnvkit",
-        "--workflow dragen",
-        "--workflow normalise` / `evaluate",
-        "--workflow feature_extraction",
-        "--workflow train",
-        "--workflow full",
+        "`--workflow canoes` / `xhmm` / `clamms`",
+        "`--workflow gcnv`",
+        "`--workflow cnvkit`",
+        "`--workflow dragen`",
+        "`--workflow normalise` / `evaluate`",
+        "`--workflow feature_extraction`",
+        "`--workflow train`",
+        "`--workflow full`",
         "Any workflow: input files exist but are not readable",
         "Any workflow: output path exists but is not writable",
+        "Any workflow: output path is writable but does not have enough free disk space",
     ]
     for item in expected_items:
         assert item in text, f"README missing unhandled use-case error bullet: {item}"

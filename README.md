@@ -268,8 +268,9 @@ instead fail later inside a process/tool step:
 - `--workflow full`: caller inputs are configured but reference assets
   (`fasta`/`fai`/`dict`/targets/refflat) are inconsistent or mismatched.
 - Any workflow: input files exist but are not readable due to permissions.
-- Any workflow: output path exists but is not writable or does not have enough
-  free disk space for intermediate files.
+- Any workflow: output path exists but is not writable.
+- Any workflow: output path is writable but does not have enough free disk space
+  for intermediate files.
 
 ## Running on the Wits UI Cluster
 
