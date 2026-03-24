@@ -3,27 +3,37 @@
 
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CODEQL_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "codeql.yml"
 
 
-def _read_workflow():
-    return CODEQL_WORKFLOW.read_text(encoding="utf-8")
+def _load_workflow():
+    return yaml.safe_load(CODEQL_WORKFLOW.read_text(encoding="utf-8"))
 
 
 def test_codeql_matrix_covers_python_and_c():
-    text = _read_workflow()
-    assert "- language: python" in text
-    assert "- language: c-cpp" in text
+    workflow = _load_workflow()
+    matrix_entries = workflow["jobs"]["analyze"]["strategy"]["matrix"]["include"]
+    languages = {entry["language"] for entry in matrix_entries}
+    assert "python" in languages
+    assert "c-cpp" in languages
 
 
 def test_codeql_has_script_analysis_job_for_nextflow_r_shell():
-    text = _read_workflow()
-    assert "analyze-scripts:" in text
-    assert "Analyze Shell scripts" in text
-    assert "shellcheck" in text
-    assert "Analyze R scripts" in text
-    assert "Rscript -e" in text
-    assert "parse(file = commandArgs(trailingOnly = TRUE)[1])" in text
-    assert "Analyze Nextflow scripts" in text
+    workflow = _load_workflow()
+    steps = workflow["jobs"]["analyze-scripts"]["steps"]
+    step_names = [step.get("name") for step in steps]
+    assert "Install ShellCheck" in step_names
+    assert "Analyze Shell scripts" in step_names
+    assert "Analyze R scripts" in step_names
+    assert "Analyze Nextflow scripts" in step_names
+
+    shell_step = next(step for step in steps if step.get("name") == "Analyze Shell scripts")
+    assert "shellcheck" in shell_step["run"]
+
+    r_step = next(step for step in steps if step.get("name") == "Analyze R scripts")
+    assert "Rscript -e" in r_step["run"]
+    assert "parse(file = commandArgs(trailingOnly = TRUE)[1])" in r_step["run"]

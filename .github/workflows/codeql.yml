@@ -111,6 +111,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Install ShellCheck
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+
     - name: Analyze Shell scripts
       shell: bash
       run: |
