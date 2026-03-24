@@ -114,7 +114,6 @@ jobs:
     - name: Analyze Shell scripts
       shell: bash
       run: |
-<<<<<<< HEAD
         if find . -type f -name '*.sh' -print -quit | grep -q . || { [ -d bin ] && find bin -type f -perm -u+x -print -quit | grep -q .; }; then
           {
             find . -type f -name '*.sh' -print0
