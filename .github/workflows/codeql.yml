@@ -48,7 +48,7 @@ jobs:
         - language: python
           build-mode: none
         - language: c-cpp
-          build-mode: autobuild
+          build-mode: none
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -114,13 +114,14 @@ jobs:
     - name: Analyze Shell scripts
       shell: bash
       run: |
+<<<<<<< HEAD
         if find . -type f -name '*.sh' -print -quit | grep -q . || { [ -d bin ] && find bin -type f -perm -u+x -print -quit | grep -q .; }; then
           {
             find . -type f -name '*.sh' -print0
             if [ -d bin ]; then
               find bin -type f -perm -u+x -print0
             fi
-          } | xargs -0 shellcheck
+          } | xargs -0 shellcheck -S error --shell=bash
         else
           echo "No shell scripts found."
         fi
