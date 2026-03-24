@@ -751,3 +751,16 @@ class TestRegionalWitsExampleParams:
         assert "DDD_UK_DATA/bams" in upload_glob
         assert "DDD_UK_DATA/crams" in upload_glob
         assert "DDD_AFRICA_DATA" not in upload_glob
+
+
+class TestParamsDirectoryLayout:
+    """Required params subdirectories for regional/general template organisation."""
+
+    def test_required_params_subdirectories_exist(self):
+        """params must include ddd-africa, ddd-uk, wits, and general directories."""
+        params_root = os.path.join(REPO_ROOT, 'params')
+        for dirname in ('ddd-africa', 'ddd-uk', 'wits', 'general'):
+            path = os.path.join(params_root, dirname)
+            assert os.path.isdir(path), (
+                f"params/{dirname} must exist"
+            )
