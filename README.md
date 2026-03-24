@@ -251,26 +251,16 @@ The pipeline already validates many required parameters and empty-channel inputs
 The following use-case errors are **not yet explicitly pre-validated** and may
 instead fail later inside a process/tool step:
 
-- `--workflow canoes` / `xhmm` / `clamms`: `samplesheet_bams` file exists but has
-  malformed rows (wrong delimiter, missing columns, or unreadable BAM paths).
 - `--workflow gcnv`: `samples_path` glob matches files with unsupported
   extensions or missing companion index/metadata expected by downstream steps.
 - `--workflow cnvkit`: `bams` are provided but one or more BAM index files are
   missing or stale.
-- `--workflow dragen`: `icav2_container` path is configured but the `.sif` file
-  is missing/unreadable, or ICA credentials are absent/invalid.
-- `--workflow normalise` / `evaluate`: `vcf_dir` contains VCFs that are present
-  but malformed/incompatible with parser assumptions.
-- `--workflow feature_extraction`: merged VCFs exist but required INFO/FORMAT
-  annotations are missing for feature generation.
-- `--workflow train`: `truth_labels` file exists but is malformed (missing
-  required columns, bad coordinate/value types, or inconsistent labels).
-- `--workflow full`: caller inputs are configured but reference assets
-  (`fasta`/`fai`/`dict`/targets/refflat) are inconsistent or mismatched.
-- Any workflow: input files exist but are not readable due to permissions.
-- Any workflow: output path exists but is not writable.
-- Any workflow: output path is writable but does not have enough free disk space
-  for intermediate files.
+- `--workflow train`: `truth_labels` file exists and has required columns but
+  contains bad coordinate/value types or inconsistent labels.
+- `--workflow feature_extraction`: merged VCFs pass basic VCF header checks but
+  are still missing INFO/FORMAT annotations required for specific features.
+- Any workflow: some workflow-specific secondary assets may exist but still be
+  unreadable or invalid in ways not fully pre-validated.
 
 ## Running on the Wits UI Cluster
 

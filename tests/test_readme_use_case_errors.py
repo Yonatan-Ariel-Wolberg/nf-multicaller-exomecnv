@@ -13,17 +13,11 @@ def test_readme_documents_validation_gaps():
     assert "### Known unhandled use-case errors (current gaps)" in text
 
     expected_items = [
-        "`--workflow canoes` / `xhmm` / `clamms`",
         "`--workflow gcnv`",
         "`--workflow cnvkit`",
-        "`--workflow dragen`",
-        "`--workflow normalise` / `evaluate`",
         "`--workflow feature_extraction`",
         "`--workflow train`",
-        "`--workflow full`",
-        "Any workflow: input files exist but are not readable",
-        "Any workflow: output path exists but is not writable",
-        "Any workflow: output path is writable but does not have enough free disk space",
+        "Any workflow: some workflow-specific secondary assets may exist but still be",
     ]
     for item in expected_items:
         assert item in text, f"README missing unhandled use-case error bullet: {item}"
