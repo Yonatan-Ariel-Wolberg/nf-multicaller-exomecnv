@@ -45,6 +45,8 @@ jobs:
         include:
         - language: python
           build-mode: none
+        - language: c-cpp
+          build-mode: autobuild
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
         # Use `c-cpp` to analyze code written in C, C++ or both
         # Use 'java-kotlin' to analyze code written in Java, Kotlin or both
@@ -97,3 +99,59 @@ jobs:
       uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
+
+  analyze-scripts:
+    name: Analyze scripts (Nextflow/R/Shell)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Analyze Shell scripts
+      shell: bash
+      run: |
+        shell_files="$(find . -type f -name '*.sh')"
+        if [[ -n "$shell_files" ]]; then
+          echo "$shell_files" | xargs shellcheck
+        else
+          echo "No shell scripts found."
+        fi
+
+    - name: Setup R
+      uses: r-lib/actions/setup-r@v2
+
+    - name: Analyze R scripts
+      shell: bash
+      run: |
+        r_files="$(find . -type f -name '*.R')"
+        if [[ -n "$r_files" ]]; then
+          while IFS= read -r file; do
+            Rscript -e "parse(file='${file}')"
+          done <<< "$r_files"
+        else
+          echo "No R scripts found."
+        fi
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Install Groovy
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y groovy
+
+    - name: Analyze Nextflow scripts
+      shell: bash
+      run: |
+        nf_files="$(find . -type f -name '*.nf')"
+        if [[ -n "$nf_files" ]]; then
+          while IFS= read -r file; do
+            groovy -e "new GroovyShell().parse(new File('${file}'))"
+          done <<< "$nf_files"
+        else
+          echo "No Nextflow scripts found."
+        fi
