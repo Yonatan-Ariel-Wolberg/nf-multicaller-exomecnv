@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Tests for modules/modules-normalise.nf and its integration into main.nf.
+Tests for modules/normalise/modules-normalise.nf and its integration into main.nf.
 
 Validates:
   1. The module file exists and has the correct DSL2 / process / workflow structure.
@@ -20,7 +20,7 @@ import re
 import pytest
 
 REPO_ROOT   = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-NF_PATH     = os.path.join(REPO_ROOT, 'modules', 'modules-normalise.nf')
+NF_PATH     = os.path.join(REPO_ROOT, 'modules', 'normalise', 'modules-normalise.nf')
 MAIN_NF     = os.path.join(REPO_ROOT, 'main.nf')
 PARAMS_FILE = os.path.join(REPO_ROOT, 'params', 'general', 'params-normalise.json')
 
@@ -54,7 +54,7 @@ class TestModuleStructure:
 
     def test_file_exists(self):
         assert os.path.isfile(NF_PATH), (
-            'modules/modules-normalise.nf must exist'
+            'modules/normalise/modules-normalise.nf must exist'
         )
 
     def test_dsl2_enabled(self, nf_text):

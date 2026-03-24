@@ -73,12 +73,12 @@ MODULE_INCLUDES = {
     "INDELIBLE":          "modules-indelible.nf",
     "CANOES":             "modules-canoes.nf",
     "XHMM":               "modules-xhmm.nf",
-    "CLAMMS":             "modules-clamms.nf",
+    "CLAMMS":             "callers/modules-clamms.nf",
     "DRAGEN":             "modules-icav2-dragen.nf",
     "CNVKIT":             "modules-cnvkit.nf",
     "GATK_GCNV":          "modules-gatk-gcnv.nf",
-    "SURVIVOR":           "modules-survivor.nf",
-    "TRUVARI":            "modules-truvari.nf",
+    "SURVIVOR":           "sv-mergers/modules-survivor.nf",
+    "TRUVARI":            "sv-mergers/modules-truvari.nf",
     "FEATURE_EXTRACTION": "modules-feature-extraction.nf",
 }
 
@@ -313,7 +313,7 @@ class TestWorkflowErrorHandling:
 
     def test_survivor_workflow_guards_empty_grouped_vcfs(self):
         """SURVIVOR module workflow should guard grouped_vcfs with .ifEmpty."""
-        module_path = os.path.join(REPO_ROOT, "modules", "modules-survivor.nf")
+        module_path = os.path.join(REPO_ROOT, "modules", "sv-mergers/modules-survivor.nf")
         with open(module_path) as fh:
             text = fh.read()
         workflow_block = re.search(r"workflow SURVIVOR\s*\{(.+?)(?=\n\}|$)", text, re.DOTALL)
@@ -324,7 +324,7 @@ class TestWorkflowErrorHandling:
 
     def test_truvari_workflow_guards_empty_grouped_vcfs(self):
         """TRUVARI module workflow should guard grouped_vcfs with .ifEmpty."""
-        module_path = os.path.join(REPO_ROOT, "modules", "modules-truvari.nf")
+        module_path = os.path.join(REPO_ROOT, "modules", "sv-mergers/modules-truvari.nf")
         with open(module_path) as fh:
             text = fh.read()
         workflow_block = re.search(r"workflow TRUVARI\s*\{(.+?)(?=\n\}|$)", text, re.DOTALL)
@@ -335,7 +335,7 @@ class TestWorkflowErrorHandling:
 
     def test_evaluate_workflow_guards_empty_vcf_input(self):
         """EVALUATE module workflow should guard vcf_ch with .ifEmpty."""
-        module_path = os.path.join(REPO_ROOT, "modules", "modules-evaluate.nf")
+        module_path = os.path.join(REPO_ROOT, "modules", "evaluate/modules-evaluate.nf")
         with open(module_path) as fh:
             text = fh.read()
         workflow_block = re.search(r"workflow EVALUATE\s*\{(.+?)(?=\n\}|$)", text, re.DOTALL)
@@ -346,7 +346,7 @@ class TestWorkflowErrorHandling:
 
     def test_train_workflow_guards_empty_features_input(self):
         """TRAIN module workflow should guard features_tsv_ch with .ifEmpty."""
-        module_path = os.path.join(REPO_ROOT, "modules", "modules-train.nf")
+        module_path = os.path.join(REPO_ROOT, "modules", "ml/modules-train.nf")
         with open(module_path) as fh:
             text = fh.read()
         workflow_block = re.search(r"workflow TRAIN\s*\{(.+?)(?=\n\}|$)", text, re.DOTALL)
@@ -357,7 +357,7 @@ class TestWorkflowErrorHandling:
 
     def test_clamms_workflow_guards_critical_collect_inputs(self):
         """CLAMMS module workflow should guard critical channels before .collect()."""
-        module_path = os.path.join(REPO_ROOT, "modules", "modules-clamms.nf")
+        module_path = os.path.join(REPO_ROOT, "modules", "callers/modules-clamms.nf")
         with open(module_path) as fh:
             text = fh.read()
         workflow_block = re.search(r"workflow CLAMMS\s*\{(.+?)(?=\n\}|$)", text, re.DOTALL)
