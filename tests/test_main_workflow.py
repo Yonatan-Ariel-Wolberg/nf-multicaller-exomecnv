@@ -212,6 +212,33 @@ class TestRequiredParamsValidation:
         assert "--workflow full requires at least 2 configured CNV callers out of 7" in main_text
 
 
+class TestRuntimeInputValidation:
+    """Runtime prevalidation helpers should be wired in main workflow."""
+
+    def test_workflow_switch_calls_runtime_validation(self, main_text):
+        assert "validate_runtime_inputs(workflow_mode)" in main_text
+
+    def test_runtime_validation_function_signatures_present(self, main_text):
+        assert "def validate_runtime_inputs(String workflow_name)" in main_text
+        assert "def validate_truth_labels_schema(def truth_labels_path)" in main_text
+        assert "def validate_samplesheet_and_bam_indices(def samplesheet_path)" in main_text
+        assert "def validate_full_reference_assets_consistency()" in main_text
+        assert "def validate_icav2_runtime_assets()" in main_text
+        assert "def validate_vcf_schema_preconditions()" in main_text
+        assert "def validate_io_permissions_and_disk(def output_dir_path" in main_text
+        assert "Integer min_free_gb = DEFAULT_MIN_FREE_GB" in main_text
+
+    def test_runtime_validation_error_contracts_present(self, main_text):
+        assert "Error: malformed truth_labels" in main_text
+        assert "Error: malformed samplesheet" in main_text
+        assert "Error: missing BAM index" in main_text
+        assert "Error: inconsistent reference assets for --workflow full" in main_text
+        assert "Error: ICAv2 asset unreadable or invalid" in main_text
+        assert "Error: output path not writable" in main_text
+        assert "Error: insufficient disk space" in main_text
+        assert "Error: VCF schema incompatibility" in main_text
+
+
 # ===========================================================================
 # 3. Sub-workflow definitions
 # ===========================================================================

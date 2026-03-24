@@ -245,6 +245,23 @@ an error if a sample ID is missing. The file does not need to contain exactly th
 same set of IDs as `samplesheet.tsv` (extra IDs are ignored), but it must include
 all sample IDs present in the samplesheet.
 
+### Known unhandled use-case errors (current gaps)
+
+The pipeline already validates many required parameters and empty-channel inputs.
+The following use-case errors are **not yet explicitly pre-validated** and may
+instead fail later inside a process/tool step:
+
+- `--workflow gcnv`: `samples_path` glob matches files with unsupported
+  extensions or missing companion index/metadata expected by downstream steps.
+- `--workflow cnvkit`: `bams` are provided but one or more BAM index files are
+  missing or stale.
+- `--workflow train`: `truth_labels` file exists and has required columns but
+  contains bad coordinate/value types or inconsistent labels.
+- `--workflow feature_extraction`: merged VCFs pass basic VCF header checks but
+  are still missing INFO/FORMAT annotations required for specific features.
+- Any workflow: some workflow-specific secondary assets may exist but still be
+  unreadable or invalid in ways not fully pre-validated.
+
 ## Running on the Wits UI Cluster
 
 The workflow has been tested on the **University of the Witwatersrand (Wits) UI HPC cluster**, which runs **Linux** and uses **SLURM** as its job scheduler.  Use the `wits` profile to activate the cluster-specific settings.

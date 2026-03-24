@@ -36,6 +36,9 @@ def CALLER_DIR_PARAMS = [
 // Valid caller names accepted by normalise_cnv_caller_quality_scores.py.
 // Note: GATK gCNV is referred to as 'GATK' (not 'GCNV') by the normalise script.
 def VALID_NORMALISE_CALLERS = ['CANOES', 'CLAMMS', 'XHMM', 'GATK', 'CNVKIT', 'DRAGEN', 'INDELIBLE']
+def BYTES_PER_GIB = 1024D * 1024D * 1024D
+def DEFAULT_MIN_FREE_GB = 5
+def MAX_VCF_SCHEMA_VALIDATION_FILES = 5
 
 def REQUIRED_PARAMS_BY_WORKFLOW = [
     // Required params are aligned to the workflow-specific params/*.json templates.
@@ -179,6 +182,285 @@ def validate_required_params(workflow_name) {
         if (!valid_merger_modes.contains(merger_mode_val)) {
             exit 1, "Error: --merger_mode '${params.merger_mode}' is not valid for --workflow ${workflow_name}. Valid values are: 'survivor', 'truvari'"
         }
+    }
+}
+
+def to_java_file(def path_value) {
+    if (path_value == null) {
+        return null
+    }
+    return (path_value instanceof File) ? path_value : new File(path_value.toString())
+}
+
+def resolve_input_path(def raw_path, File base_dir = null) {
+    if (raw_path == null) {
+        return null
+    }
+    def p = raw_path.toString().trim()
+    if (!p) {
+        return null
+    }
+    def f = new File(p)
+    if (f.isAbsolute() || base_dir == null) {
+        return f
+    }
+    return new File(base_dir, p)
+}
+
+def fail_validation(String message) {
+    exit 1, message
+}
+
+def require_readable_file(def path_value, String param_name) {
+    if (!path_value) {
+        fail_validation("Error: missing required path for ${param_name}")
+    }
+    def p = to_java_file(path_value)
+    if (!p.exists() || !p.isFile() || !p.canRead()) {
+        fail_validation("Error: unreadable file for ${param_name}: ${path_value}")
+    }
+    return p
+}
+
+def require_readable_dir(def path_value, String param_name) {
+    if (!path_value) {
+        fail_validation("Error: missing required directory for ${param_name}")
+    }
+    def p = to_java_file(path_value)
+    if (!p.exists() || !p.isDirectory() || !p.canRead()) {
+        fail_validation("Error: unreadable directory for ${param_name}: ${path_value}")
+    }
+    return p
+}
+
+def require_writable_dir(def path_value, String label) {
+    if (!path_value) {
+        fail_validation("Error: output path not writable (${label}): ${path_value}")
+    }
+    def p = to_java_file(path_value)
+    if (!p.exists() && !p.mkdirs()) {
+        fail_validation("Error: output path not writable (${label}): ${path_value}")
+    }
+    if (!p.exists() || !p.isDirectory() || !p.canWrite()) {
+        fail_validation("Error: output path not writable (${label}): ${path_value}")
+    }
+    return p
+}
+
+def validate_truth_labels_schema(def truth_labels_path) {
+    def truth_labels_file = require_readable_file(truth_labels_path, 'truth_labels')
+    def header_line = null
+    truth_labels_file.withReader { reader ->
+        header_line = reader.readLine()
+    }
+
+    if (header_line == null || header_line.trim().isEmpty()) {
+        fail_validation("Error: malformed truth_labels '${truth_labels_path}': file is empty or missing header")
+    }
+
+    def required_cols = ['sample_id', 'chrom', 'start', 'end', 'cnv_type', 'truth_label']
+    def header_cols = header_line.split('\t', -1).collect { it.trim() }
+    def missing = required_cols.findAll { !header_cols.contains(it) }
+    if (!missing.isEmpty()) {
+        fail_validation("Error: malformed truth_labels '${truth_labels_path}': missing required columns ${missing.join(', ')}")
+    }
+}
+
+def validate_samplesheet_and_bam_indices(def samplesheet_path) {
+    def samplesheet_file = require_readable_file(samplesheet_path, 'samplesheet_bams')
+    def header_line = null
+    samplesheet_file.withReader { reader ->
+        header_line = reader.readLine()
+    }
+    if (header_line == null || header_line.trim().isEmpty()) {
+        fail_validation("Error: malformed samplesheet '${samplesheet_path}': file is empty or missing header")
+    }
+
+    def header_cols = header_line.split('\t', -1).collect { it.trim() }
+    if (!header_cols.contains('SampleID') || !header_cols.contains('BAM')) {
+        fail_validation("Error: malformed samplesheet '${samplesheet_path}': expected tab-separated columns 'SampleID' and 'BAM'")
+    }
+
+    def sample_idx = header_cols.indexOf('SampleID')
+    def bam_idx = header_cols.indexOf('BAM')
+    def seen_sample_ids = [] as Set
+    def row_count = 0
+    samplesheet_file.eachLine { line, line_number ->
+        if (line_number == 1 || line.trim().isEmpty()) {
+            return
+        }
+        def fields = line.split('\t', -1)
+        if (fields.size() <= Math.max(sample_idx, bam_idx)) {
+            fail_validation("Error: malformed samplesheet '${samplesheet_path}': line ${line_number} has missing columns")
+        }
+
+        def sample_id = fields[sample_idx].trim()
+        def bam_raw = fields[bam_idx].trim()
+        if (!sample_id || !bam_raw) {
+            fail_validation("Error: malformed samplesheet '${samplesheet_path}': line ${line_number} has empty SampleID/BAM value")
+        }
+        if (seen_sample_ids.contains(sample_id)) {
+            fail_validation("Error: malformed samplesheet '${samplesheet_path}': duplicate SampleID '${sample_id}'")
+        }
+        seen_sample_ids.add(sample_id)
+
+        def bam_path = resolve_input_path(bam_raw, samplesheet_file.parentFile)
+        if (bam_path == null || !bam_path.exists() || !bam_path.isFile() || !bam_path.canRead()) {
+            fail_validation("Error: malformed samplesheet '${samplesheet_path}': unreadable BAM path '${bam_raw}' for sample '${sample_id}'")
+        }
+
+        def index_candidates = []
+        if (bam_path.name.toLowerCase().endsWith('.bam')) {
+            index_candidates << new File(bam_path.toString() + '.bai')
+            index_candidates << new File(bam_path.parentFile, bam_path.name.replaceAll(/(?i)\.bam$/, '.bai'))
+        } else if (bam_path.name.toLowerCase().endsWith('.cram')) {
+            index_candidates << new File(bam_path.toString() + '.crai')
+            index_candidates << new File(bam_path.parentFile, bam_path.name.replaceAll(/(?i)\.cram$/, '.crai'))
+        }
+        if (!index_candidates.isEmpty()) {
+            def has_readable_index = index_candidates.any { it.exists() && it.isFile() && it.canRead() }
+            if (!has_readable_index) {
+                fail_validation("Error: missing BAM index for sample '${sample_id}' in samplesheet '${samplesheet_path}'")
+            }
+        }
+        row_count++
+    }
+
+    if (row_count == 0) {
+        fail_validation("Error: malformed samplesheet '${samplesheet_path}': no data rows found")
+    }
+}
+
+def validate_full_reference_assets_consistency() {
+    ['fasta', 'fai', 'dict', 'targets', 'refflat', 'exome_targets'].each { param_name ->
+        if (is_param_set(param_name)) {
+            require_readable_file(params[param_name], param_name)
+        }
+    }
+
+    if (is_param_set('samples_path') && (!is_param_set('fasta') || !is_param_set('fai') || !is_param_set('dict') || !is_param_set('exome_targets'))) {
+        fail_validation("Error: inconsistent reference assets for --workflow full: gCNV input requires --fasta, --fai, --dict, and --exome_targets together with --samples_path")
+    }
+
+    if (is_param_set('bams') && (!is_param_set('fasta') || !is_param_set('targets') || !is_param_set('refflat'))) {
+        fail_validation("Error: inconsistent reference assets for --workflow full: CNVkit input requires --fasta, --targets, and --refflat together with --bams")
+    }
+}
+
+def validate_icav2_runtime_assets() {
+    if (is_param_set('icav2_container')) {
+        def container_file = require_readable_file(params.icav2_container, 'icav2_container')
+        if (!container_file.name.toLowerCase().endsWith('.sif')) {
+            fail_validation("Error: ICAv2 asset unreadable or invalid: --icav2_container must point to a .sif file (${params.icav2_container})")
+        }
+    }
+
+    if (is_param_set('ica_credentials_dir')) {
+        require_readable_dir(params.ica_credentials_dir, 'ica_credentials_dir')
+    }
+
+    if (is_param_set('localDownloadPath')) {
+        require_writable_dir(params.localDownloadPath, 'localDownloadPath')
+    }
+}
+
+def open_maybe_gzip_reader(File f) {
+    if (f.name.toLowerCase().endsWith('.gz')) {
+        FileInputStream fis = new FileInputStream(f)
+        try {
+            def gis = new java.util.zip.GZIPInputStream(fis)
+            return new BufferedReader(new InputStreamReader(gis))
+        } catch (Throwable t) {
+            fis.close()
+            throw t
+        }
+    }
+    return new BufferedReader(new FileReader(f))
+}
+
+def validate_single_vcf_schema(File vcf_file, String context_label) {
+    def saw_header = false
+    def valid_header = false
+    def reader = open_maybe_gzip_reader(vcf_file)
+    try {
+        String line
+        while ((line = reader.readLine()) != null) {
+            if (line.startsWith('#CHROM')) {
+                saw_header = true
+                def fields = line.split('\t', -1)
+                valid_header = (fields.size() >= 8 &&
+                    fields[0] == '#CHROM' &&
+                    fields[1] == 'POS' &&
+                    fields[2] == 'ID' &&
+                    fields[3] == 'REF' &&
+                    fields[4] == 'ALT' &&
+                    fields[5] == 'QUAL' &&
+                    fields[6] == 'FILTER' &&
+                    fields[7] == 'INFO')
+                break
+            }
+        }
+    } finally {
+        reader.close()
+    }
+
+    if (!saw_header || !valid_header) {
+        fail_validation("Error: VCF schema incompatibility in ${context_label}: ${vcf_file}")
+    }
+}
+
+def validate_vcf_schema_preconditions() {
+    if (['normalise', 'evaluate'].contains(workflow_mode) && is_param_set('vcf_dir')) {
+        def vcf_dir = require_readable_dir(params.vcf_dir, 'vcf_dir')
+        def vcfs = vcf_dir.listFiles()?.findAll {
+            it.isFile() && (it.name.toLowerCase().endsWith('.vcf') || it.name.toLowerCase().endsWith('.vcf.gz'))
+        } ?: []
+        vcfs.take(MAX_VCF_SCHEMA_VALIDATION_FILES).each { vcf_file ->
+            validate_single_vcf_schema(vcf_file, "--workflow ${workflow_mode} --vcf_dir")
+        }
+    }
+
+    if (['feature_extraction', 'survivor_with_features', 'truvari_with_features'].contains(workflow_mode) && is_param_set('merged_vcf_dir')) {
+        def merged_vcf_dir = require_readable_dir(params.merged_vcf_dir, 'merged_vcf_dir')
+        def suffix = (params.get('merger_mode', 'survivor').toString().trim().toLowerCase() == 'truvari') ? '_truvari_merged' : '_survivor_union'
+        def merged_vcfs = merged_vcf_dir.listFiles()?.findAll {
+            it.isFile() &&
+            it.name.contains(suffix) &&
+            (it.name.toLowerCase().endsWith('.vcf') || it.name.toLowerCase().endsWith('.vcf.gz'))
+        } ?: []
+        merged_vcfs.take(MAX_VCF_SCHEMA_VALIDATION_FILES).each { vcf_file ->
+            validate_single_vcf_schema(vcf_file, "--workflow ${workflow_mode} --merged_vcf_dir")
+        }
+    }
+}
+
+def validate_io_permissions_and_disk(def output_dir_path, Integer min_free_gb = DEFAULT_MIN_FREE_GB) {
+    if (output_dir_path) {
+        def output_dir = require_writable_dir(output_dir_path, 'outdir')
+        def free_gb = (output_dir.usableSpace / BYTES_PER_GIB)
+        if (free_gb < min_free_gb) {
+            fail_validation("Error: insufficient disk space in output path '${output_dir_path}'. Required at least ${min_free_gb} GB, found ${String.format('%.2f', free_gb)} GB.")
+        }
+    }
+}
+
+def validate_runtime_inputs(String workflow_name) {
+    validate_io_permissions_and_disk(params.get('outdir', null))
+
+    if (['canoes', 'xhmm', 'clamms', 'full'].contains(workflow_name) && is_param_set('samplesheet_bams')) {
+        validate_samplesheet_and_bam_indices(params.samplesheet_bams)
+    }
+    if (['train', 'full'].contains(workflow_name) && is_param_set('truth_labels')) {
+        validate_truth_labels_schema(params.truth_labels)
+    }
+    if (workflow_name == 'full') {
+        validate_full_reference_assets_consistency()
+    }
+    if (['dragen', 'full'].contains(workflow_name)) {
+        validate_icav2_runtime_assets()
+    }
+    if (['normalise', 'evaluate', 'feature_extraction', 'survivor_with_features', 'truvari_with_features'].contains(workflow_name)) {
+        validate_vcf_schema_preconditions()
     }
 }
 
@@ -482,6 +764,7 @@ workflow RUN_TRUVARI_WITH_FEATURES {
 
 workflow {
     validate_required_params(workflow_mode)
+    validate_runtime_inputs(workflow_mode)
     switch (workflow_mode) {
         
         case['indelible']:
