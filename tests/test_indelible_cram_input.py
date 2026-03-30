@@ -490,8 +490,9 @@ class TestIndelibleChrXConversion:
         vcf = os.path.join(out, "MECP2_SAMPLE_INDELIBLE_output.vcf")
         data = [l for l in open(vcf) if not l.startswith('#') and l.strip()]
         for record in data:
+            record_field = {record.split('\t')[0]}
             assert record.startswith("chrX\t"), (
-                f"Expected chrX prefix, got: {record.split('\t')[0]}"
+                f"Expected chrX prefix, got: ${record_field}"
             )
 
     def test_predicted_N_is_lowquality(self, indelible_chrX_tsv, fai_with_chrX, tmp_path):
@@ -504,8 +505,9 @@ class TestIndelibleChrXConversion:
         data = [l for l in open(vcf) if not l.startswith('#') and l.strip()]
         # Row 1 (pos 153296122) → predicted=N
         record_n = next(r for r in data if r.split('\t')[1] == '153296122')
+        record_n_field = {record_n.split('\t')[6]}
         assert record_n.split('\t')[6] == 'LowQuality', (
-            f"Expected LowQuality, got {record_n.split('\t')[6]}"
+            f"Expected LowQuality, got ${record_n_field}"
         )
 
     def test_predicted_Y_is_pass(self, indelible_chrX_tsv, fai_with_chrX, tmp_path):
@@ -518,8 +520,9 @@ class TestIndelibleChrXConversion:
         data = [l for l in open(vcf) if not l.startswith('#') and l.strip()]
         # Row 2 (pos 153296083) → predicted=Y
         record_y = next(r for r in data if r.split('\t')[1] == '153296083')
+        record_y_field = {record_y.split('\t')[6]}
         assert record_y.split('\t')[6] == 'PASS', (
-            f"Expected PASS, got {record_y.split('\t')[6]}"
+            f"Expected PASS, got ${record_y_field}"
         )
 
     def test_hgnc_mecp2_in_info(self, indelible_chrX_tsv, fai_with_chrX, tmp_path):
