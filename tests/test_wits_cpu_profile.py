@@ -756,8 +756,8 @@ class TestRegionalWitsExampleParams:
         assert self._read_json('params-gatk-gcnv-wits-ddd-uk.json').get('samples_path') == DDD_UK_BAM_GLOB
         assert self._read_json('params-indelible-wits-ddd-uk.json').get('crams') == DDD_UK_CRAM_DIR
         upload_glob = self._read_json('params-icav2-dragen-wits-ddd-uk.json').get('cramFilePairsUploadPath', '')
-        assert "DDD_UK_DATA/bams" in upload_glob
         assert "DDD_UK_DATA/crams" in upload_glob
+        assert "DDD_UK_DATA/bams" not in upload_glob
         assert "DDD_AFRICA_DATA" not in upload_glob
 
 
