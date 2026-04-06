@@ -10,6 +10,9 @@ include { BGZIP_SORT_INDEX_VCF; NORMALISE_CNV_QUALITY_SCORES } from '../common/m
 // =====================================================================================
 // GLOBAL FILE INSTANTIATION
 // =====================================================================================
+params.ref        = ''
+params.probes     = ''
+params.xhmm_conf  = ''
 params.xhmm_batch_size = 50  // BAMs per GATK DepthOfCoverage job; increase for fewer but larger jobs
 ref       = file(params.ref, type: 'file')
 probes    = file(params.probes, type: 'file')

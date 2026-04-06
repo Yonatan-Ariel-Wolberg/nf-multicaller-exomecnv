@@ -8,6 +8,9 @@ include { NORMALISE_CNV_QUALITY_SCORES } from '../common/modules-common.nf'
 // =============================================================================
 
 // REQUIRED FILES
+params.ref            = ''
+params.priors         = ''
+params.indelible_conf = ''
 ref               = file(params.ref, type: 'file')
 priors            = file(params.priors, type: 'file')
 indelible_conf    = file(params.indelible_conf, type: 'file')
