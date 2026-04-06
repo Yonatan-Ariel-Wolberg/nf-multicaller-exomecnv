@@ -350,7 +350,7 @@ class TestCreateCustomRefPanel:
         )
 
     def test_label_is_r(self, create_custom_ref_panel_body):
-        """Process label must be 'R' (not 'clamms|bedtools')."""
+        """Process label must be 'R' (not 'clamms_bedtools')."""
         assert "label 'R'" in create_custom_ref_panel_body, (
             "CREATE_CUSTOM_REF_PANEL must use label 'R' since it runs an R script."
         )
