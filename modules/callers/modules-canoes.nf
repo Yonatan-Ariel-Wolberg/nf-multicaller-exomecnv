@@ -188,7 +188,7 @@ process FILTER_CANOES_CNVS {
 // Process to convert the filtered CANOES output to VCF format
 process CONVERT_CANOES_TO_VCF {
     tag { "CSV_TO_VCF" }
-    label 'canoes|R'
+    label 'canoes_R'
     publishDir "${outdir}/out_CANOES/vcfs", mode: 'copy', overwrite: true
 
     input:

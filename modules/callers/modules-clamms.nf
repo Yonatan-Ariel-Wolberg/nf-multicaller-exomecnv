@@ -33,7 +33,7 @@ outdir        = file(params.outdir)
 // Process to generate windows for analysis
 process GENERATE_WINDOWS {
     tag "Generate_Windows"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
 
     output:
     path "windows.bed", emit: windows
@@ -52,7 +52,7 @@ process GENERATE_WINDOWS {
 // Process to calculate depth of coverage using samtools
 process SAMTOOLS_DOC {
     tag "${sample_id}"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
 
     input:
     tuple val(sample_id), path(bam), path(bai)
@@ -72,7 +72,7 @@ process SAMTOOLS_DOC {
 // Process to normalize depth of coverage
 process NORMALIZE_DOC {
     tag "${sample_id}"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
 
     input:
     tuple val(sample_id), path(coverage)
@@ -92,7 +92,7 @@ process NORMALIZE_DOC {
 // Process to create PCA input data
 process CREATE_PCA_DATA {
     tag "PCA_Data"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
 
     input:
     path norm_covs
@@ -202,7 +202,7 @@ process CREATE_CUSTOM_REF_PANEL {
 // Process to train models using the reference panel
 process TRAIN_MODELS {
     tag "${sample_id}"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
 
     input:
     tuple val(sample_id), path(ref_panel_file)
@@ -224,7 +224,7 @@ process TRAIN_MODELS {
 // Process to call CNVs from the trained models
 process CALL_CNVS {
     tag "${sample_id}"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
     publishDir "${outdir}/out_CLAMMS/calls", mode: 'copy', overwrite: true
 
     input:
@@ -246,7 +246,7 @@ process CALL_CNVS {
 // Process to filter CNVs based on criteria
 process FILTER_CLAMMS_CNVS {
     tag "Filter_CLAMMS"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
     publishDir "${outdir}/out_CLAMMS", mode: 'copy', overwrite: true
 
     input:
@@ -268,7 +268,7 @@ process FILTER_CLAMMS_CNVS {
 // Process to convert CLAMMS BED to VCF using the Python script
 process CONVERT_CLAMMS_TO_VCF {
     tag "BED_TO_VCF"
-    label 'clamms|bedtools'
+    label 'clamms_bedtools'
     publishDir "${outdir}/out_CLAMMS/vcfs", mode: 'copy', overwrite: true
 
     input:
