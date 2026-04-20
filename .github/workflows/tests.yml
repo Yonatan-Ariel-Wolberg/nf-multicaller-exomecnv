@@ -33,7 +33,8 @@ jobs:
           sudo mv nextflow /usr/local/bin/
 
       - name: Check Nextflow syntax
-        run: nextflow run main.nf --workflow normalise --outdir ./ci_out --vcf_dir ./tests/data/minimal_vcf_dir --caller CANOES -stub-run
+        run: |
+          nextflow run main.nf --workflow normalise --outdir ./ci_out --vcf_dir ./tests/data/minimal_vcf_dir --caller CANOES -stub-run -with-docker false -with-singularity false -with-apptainer false
 
       - name: Check bash scripts
         run: |
