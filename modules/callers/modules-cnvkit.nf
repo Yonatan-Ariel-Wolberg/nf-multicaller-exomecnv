@@ -6,9 +6,7 @@ include { BGZIP_SORT_INDEX_VCF; NORMALISE_CNV_QUALITY_SCORES } from '../common/m
 // =====================================================================================
 // GLOBAL PARAMETERS
 // =====================================================================================
-params {
-    test_size = -1 // Specify the test size for performance tuning
-}
+params.test_size = params.test_size ?: -1 // Specify the test size for performance tuning
 
 // Define output directory
 outdir = file(params.outdir, type: 'dir')
