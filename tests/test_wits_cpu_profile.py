@@ -523,6 +523,7 @@ DDD_AFRICA_SAMPLESHEET = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/bat
 DDD_AFRICA_TOPLEVEL_SAMPLESHEET = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/samplesheet_africa.tsv"
 DDD_AFRICA_BAM_GLOB = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/**/*.{bam,bam.bai}"
 DDD_AFRICA_INDELIBLE_DIRS = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}"
+DDD_AFRICA_DRAGEN_D3S_GLOB = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/Proband/D3S/**/*.{cram,cram.crai}"
 WITS_REF_FASTA = "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa"
 WITS_REF_FAI = "/dataG/ddd/data/resources/hg38/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai"
 WITS_TARGETS_BED = "/dataG/ddd/data/resources/canoes/probes_sanger.bed"
@@ -535,6 +536,7 @@ DDD_UK_CRAM_DIR = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/crams"
 DDD_AFRICA_SEXINFO = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/sex_info.txt"
 DDD_UK_SEXINFO = "/home/ywolberg/DECIPHERING_DD_DATA/DDD_UK_DATA/sex_info.txt"
 WITS_XHMM_CONF = "/dataG/ddd/data/resources/xhmm/params.txt"
+RUN_CALLING_WORKFLOWS_COMMON = os.path.join(REPO_ROOT, 'sbatch', 'run-calling-workflows-common.sh')
 
 
 def _wits_params_path(filename):
@@ -761,7 +763,7 @@ class TestRegionalWitsExampleParams:
         assert self._read_json('params-cnvkit-wits-ddd-africa.json').get('bams') == DDD_AFRICA_BAM_GLOB
         assert self._read_json('params-gatk-gcnv-wits-ddd-africa.json').get('samples_path') == DDD_AFRICA_BAM_GLOB
         assert self._read_json('params-indelible-wits-ddd-africa.json').get('crams') == DDD_AFRICA_INDELIBLE_DIRS
-        assert "DDD_AFRICA_DATA/batch_3/organized_data/Proband" in self._read_json('params-icav2-dragen-wits-ddd-africa.json').get('cramFilePairsUploadPath', '')
+        assert self._read_json('params-icav2-dragen-wits-ddd-africa.json').get('cramFilePairsUploadPath') == DDD_AFRICA_DRAGEN_D3S_GLOB
 
     def test_ddd_uk_examples_point_to_ddd_uk_inputs_only(self):
         """DDD-UK examples should reference DDD_UK_DATA paths where applicable."""
@@ -776,6 +778,16 @@ class TestRegionalWitsExampleParams:
         assert "DDD_UK_DATA/bams" not in upload_glob
         assert "DDD_UK_DATA/crams" in upload_glob
         assert "DDD_AFRICA_DATA" not in upload_glob
+
+
+class TestRegionalSbatchLaunchers:
+    """Regional sbatch launcher defaults should target the intended dataset roots."""
+
+    def test_ddd_africa_dragen_subset_default_uses_d3s_root(self):
+        """DDD-AFRICA 5/10 launcher path default should be scoped to Proband/D3S."""
+        with open(RUN_CALLING_WORKFLOWS_COMMON) as fh:
+            content = fh.read()
+        assert "DDD_AFRICA_DATA/batch_3/organized_data/Proband/D3S" in content
 
 
 class TestParamsDirectoryLayout:
