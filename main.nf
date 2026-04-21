@@ -466,6 +466,12 @@ def validate_runtime_inputs(String workflow_name) {
     }
 }
 
+def is_validation_only_mode() {
+    // `-stub-run` should validate config/inputs without launching process execution
+    // (and therefore without container resolution or image pulls).
+    workflow.stubRun
+}
+
 def extract_sample_id_from_vcf(f) {
     // Extract bare sample ID from per-caller VCF names used across modules,
     // including DRAGEN's ${sample_id}.cnv.vcf(.gz) convention.
@@ -767,6 +773,10 @@ workflow RUN_TRUVARI_WITH_FEATURES {
 workflow {
     validate_required_params(workflow_mode)
     validate_runtime_inputs(workflow_mode)
+    if (is_validation_only_mode()) {
+        log.info "Validation-only execution mode detected (stub-run); exiting before process execution."
+        return
+    }
     switch (workflow_mode) {
         
         case['indelible']:
