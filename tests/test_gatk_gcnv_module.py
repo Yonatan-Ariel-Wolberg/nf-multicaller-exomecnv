@@ -19,6 +19,7 @@ for exome sequencing data:
      sample index channel so that sample indices are deterministically assigned.
 """
 
+import os
 import re
 import pytest
 
@@ -42,7 +43,6 @@ def _read_module(repo_root="."):
 
 @pytest.fixture(scope="module")
 def module_text():
-    import os
     repo_root = os.path.join(os.path.dirname(__file__), "..")
     return _read_module(repo_root)
 
