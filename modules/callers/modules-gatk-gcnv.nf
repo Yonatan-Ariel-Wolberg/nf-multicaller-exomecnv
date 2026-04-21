@@ -7,16 +7,16 @@ include { NORMALISE_CNV_QUALITY_SCORES } from '../common/modules-common.nf'
 // GLOBAL FILE INSTANTIATION
 // =====================================================================================
 // Default values for module tuning parameters
-def bin_length = 0      // 0 = no binning for exome; use >0 for WGS
-def padding = 250       // 250 bp padding per GATK gCNV exome best practice
-def scatter_count = 5000 // Max intervals per shard (INTERVAL_COUNT mode)
-def is_wgs = false
+def default_bin_length = 0      // 0 = no binning for exome; use >0 for WGS
+def default_padding = 250       // 250 bp padding per GATK gCNV exome best practice
+def default_scatter_count = 5000 // Max intervals per shard (INTERVAL_COUNT mode)
+def default_is_wgs = false
 
 // Safely override defaults from parent workflow/config if provided
-bin_length = params.get('bin_length', bin_length).toInteger()
-padding = params.get('padding', padding).toInteger()
-scatter_count = params.get('scatter_count', scatter_count).toInteger()
-is_wgs = params.get('is_wgs', is_wgs) as boolean
+def bin_length = params.get('bin_length', default_bin_length).toInteger()
+def padding = params.get('padding', default_padding).toInteger()
+def scatter_count = params.get('scatter_count', default_scatter_count).toInteger()
+def is_wgs = params.get('is_wgs', default_is_wgs) as boolean
 
 // Define output directory
 outdir = file(params.outdir, type: 'dir')
