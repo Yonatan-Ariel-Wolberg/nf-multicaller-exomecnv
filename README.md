@@ -350,7 +350,7 @@ Relevant Wits input paths used by the `params/*-wits.json` templates:
 - INDELIBLE DDD-AFRICA family directories:
   `/home/ywolberg/DECIPHERING_DD_DATA/DDD_AFRICA_DATA/batch_3/organized_data/{Extended,Father,Mother,Proband}`
 - DRAGEN upload roots:
-  `/home/ywolberg/DECIPHERING_DD_DATA/{DDD_UK_DATA/bams,DDD_UK_DATA/crams,DDD_AFRICA_DATA/batch_3/organized_data/Proband}/**/*.{bam,bam.bai,cram,cram.crai}`
+  `/home/ywolberg/DECIPHERING_DD_DATA/{DDD_UK_DATA/bams,DDD_UK_DATA/crams,DDD_AFRICA_DATA/batch_3/organized_data/Proband/D3S}/**/*.{bam,bam.bai,cram,cram.crai}`
 
 Region-specific examples are also provided for every Wits module template:
 

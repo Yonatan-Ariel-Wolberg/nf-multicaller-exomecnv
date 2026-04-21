@@ -20,7 +20,7 @@ case "$DATASET" in
     SAMPLE_SHEET="${DDD_AFRICA_SAMPLE_SHEET:-${DDD_DATA_HOME}/DDD_AFRICA_DATA/samplesheet_africa.tsv}"
     BAM_ROOT="${DDD_AFRICA_BAM_ROOT:-${DDD_DATA_HOME}/DDD_AFRICA_DATA/batch_3/organized_data}"
     INDELIBLE_ROOT="${DDD_AFRICA_INDELIBLE_ROOT:-${DDD_DATA_HOME}/DDD_AFRICA_DATA/batch_3/organized_data}"
-    DRAGEN_ROOT="${DDD_AFRICA_DRAGEN_ROOT:-${DDD_DATA_HOME}/DDD_AFRICA_DATA/batch_3/organized_data/Proband}"
+    DRAGEN_ROOT="${DDD_AFRICA_DRAGEN_ROOT:-${DDD_DATA_HOME}/DDD_AFRICA_DATA/batch_3/organized_data/Proband/D3S}"
     ;;
   ddd-uk)
     PARAM_DIR="params/ddd-uk"
