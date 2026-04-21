@@ -6,12 +6,11 @@ include { NORMALISE_CNV_QUALITY_SCORES } from '../common/modules-common.nf'
 // =====================================================================================
 // GLOBAL FILE INSTANTIATION
 // =====================================================================================
-params {
-    bin_length = 0     // 0 = no binning for exome (each target interval is its own bin); use >0 for WGS
-    padding = 250      // 250 bp padding per GATK gCNV exome best practice
-    scatter_count = 5000 // SCATTER_CONTENT: max intervals per shard (used with INTERVAL_COUNT mode)
-    is_wgs = false // Set to false indicating the analysis is exome sequencing
-}
+// Default values for module tuning parameters if not provided by the parent workflow/config
+def bin_length = params.get('bin_length', 0).toInteger()        // 0 = no binning for exome; use >0 for WGS
+def padding = params.get('padding', 250).toInteger()            // 250 bp padding per GATK gCNV exome best practice
+def scatter_count = params.get('scatter_count', 5000).toInteger() // Max intervals per shard (INTERVAL_COUNT mode)
+def is_wgs = params.get('is_wgs', false)
 
 // Define output directory
 outdir = file(params.outdir, type: 'dir')
@@ -60,8 +59,8 @@ process PREPROCESS_INTERVALS {
     gatk --java-options "-Xmx4g" PreprocessIntervals \\
         -R $fasta \\
         -L $targets \\
-        --bin-length ${params.bin_length} \\
-        --padding ${params.padding} \\
+        --bin-length ${bin_length} \\
+        --padding ${padding} \\
         -imr OVERLAPPING_ONLY \\
         -O preprocessed.interval_list
     """
@@ -182,7 +181,7 @@ process SCATTER_INTERVALS {
     gatk --java-options "-Xmx4g" IntervalListTools \\
         --INPUT $intervals \\
         --SUBDIVISION_MODE INTERVAL_COUNT \\
-        --SCATTER_CONTENT ${params.scatter_count} \\
+        --SCATTER_CONTENT ${scatter_count} \\
         --OUTPUT .
     """
 }
