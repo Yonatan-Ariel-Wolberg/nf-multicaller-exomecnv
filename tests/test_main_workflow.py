@@ -159,6 +159,13 @@ class TestWorkflowSwitchCases:
             "get a clear list of missing required parameters per workflow."
         )
 
+    def test_workflow_switch_short_circuits_stub_run_before_dispatch(self, main_text):
+        """Stub runs should exit before process dispatch to avoid runtime-only side effects."""
+        assert "def is_validation_only_mode()" in main_text
+        assert "workflow.stubRun" in main_text
+        assert "if (is_validation_only_mode())" in main_text
+        assert "exiting before process execution" in main_text
+
 
 class TestRequiredParamsValidation:
     """Required-parameter validation should list missing params per workflow."""
